@@ -2,11 +2,12 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 
 import { login as requestLogin, type LoginPayload } from '@/api/auth'
-import { clearSession, readToken, readUsername, writeSession } from '@/utils/storage'
+import { clearSession, readSession, writeSession } from '@/utils/storage'
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref(readToken())
-  const username = ref(readUsername())
+  const stored = readSession()
+  const token = ref(stored.token)
+  const username = ref(stored.username)
   const isAuthenticated = computed(() => token.value.length > 0)
 
   async function signIn(payload: LoginPayload): Promise<void> {

@@ -4,7 +4,9 @@ import {
   Document,
   Goods,
   House,
+  Key,
   Picture,
+  Setting,
   Tickets,
   User,
   Wallet,
@@ -18,6 +20,8 @@ export interface AdminMenuItem {
   path?: string
   icon?: Component
   permission: string
+  /** 未完成的占位页。微信支付配置页除外。 */
+  placeholder?: boolean
   children?: AdminMenuItem[]
 }
 
@@ -86,5 +90,21 @@ export const adminMenus: AdminMenuItem[] = [
     path: paths.finance,
     icon: Wallet,
     permission: 'finance',
+  },
+  {
+    key: 'settings',
+    title: '设置',
+    icon: Setting,
+    permission: 'settings',
+    children: [
+      {
+        key: 'settings-wechat-pay',
+        title: '微信支付',
+        path: paths.settingsWechatPay,
+        icon: Key,
+        permission: 'settings.wechat-pay',
+        placeholder: false,
+      },
+    ],
   },
 ]

@@ -4,11 +4,14 @@ import { computed } from 'vue'
 import { adminMenus, type AdminMenuItem } from '@/router/menu'
 import { paths } from '@/router/paths'
 import { useAuthStore } from '@/stores/auth'
+import { usePermissionStore } from '@/stores/permission'
 
 interface ModuleLink {
   title: string
   path: string
   group?: string
+  placeholder: boolean
+  permission: string
 }
 
 function leaves(items: AdminMenuItem[], group?: string): ModuleLink[] {
@@ -17,27 +20,38 @@ function leaves(items: AdminMenuItem[], group?: string): ModuleLink[] {
       return leaves(item.children, item.title)
     }
     if (!item.path || item.path === paths.dashboard) return []
-    return [{ title: item.title, path: item.path, group }]
+    return [
+      {
+        title: item.title,
+        path: item.path,
+        group,
+        placeholder: item.placeholder !== false,
+        permission: item.permission,
+      },
+    ]
   })
 }
 
 const auth = useAuthStore()
+const permission = usePermissionStore()
 const username = computed(() => auth.username || '管理员')
-const modules = leaves(adminMenus)
+const modules = leaves(adminMenus).filter((item) => permission.canAccess(item.permission))
 </script>
 
 <template>
   <section class="home">
     <header>
       <h1>首页</h1>
-      <p>欢迎回来，{{ username }}。后台骨架已就绪，下列模块只有入口，页面内容待实现。</p>
+      <p>欢迎回来，{{ username }}。微信支付可以在「设置」里填写并保存，其余模块仍待实现。</p>
     </header>
     <ul class="modules">
       <li v-for="item in modules" :key="item.path">
         <router-link class="module" :to="item.path">
           <span class="module__group">{{ item.group ?? '业务' }}</span>
           <span class="module__title">{{ item.title }}</span>
-          <el-tag size="small" effect="plain">待实现</el-tag>
+          <el-tag size="small" effect="plain" :type="item.placeholder ? 'info' : 'success'">
+            {{ item.placeholder ? '待实现' : '可用' }}
+          </el-tag>
         </router-link>
       </li>
     </ul>
