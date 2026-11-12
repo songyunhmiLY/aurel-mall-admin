@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { type FormInstance, type FormRules } from 'element-plus'
 
+import { apiErrorMessage } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { paths } from '@/router/paths'
 
@@ -12,6 +13,7 @@ const auth = useAuthStore()
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
+const formError = ref('')
 const form = reactive({
   username: '',
   password: '',
@@ -31,6 +33,7 @@ function safeRedirect(value: unknown): string {
 async function submit(): Promise<void> {
   const current = formRef.value
   if (!current || loading.value) return
+  formError.value = ''
   loading.value = true
 
   const valid = await current
@@ -49,8 +52,7 @@ async function submit(): Promise<void> {
     })
     await router.replace(safeRedirect(route.query.redirect))
   } catch (error) {
-    const message = error instanceof Error ? error.message : '登录失败'
-    ElMessage.error(message)
+    formError.value = apiErrorMessage(error, '登录失败')
   } finally {
     loading.value = false
   }
@@ -67,7 +69,15 @@ async function submit(): Promise<void> {
     <section class="login__panel">
       <div class="card">
         <h2>登录</h2>
-        <p class="card__hint">任意非空账号即可进入。当前为本地桩，用于预览布局。</p>
+        <p class="card__hint">请使用管理员账号登录。用户名和密码由服务器校验。</p>
+        <el-alert
+          v-if="formError"
+          class="form-error"
+          type="error"
+          :title="formError"
+          show-icon
+          :closable="false"
+        />
         <el-form
           ref="formRef"
           :model="form"
@@ -94,7 +104,7 @@ async function submit(): Promise<void> {
             />
           </el-form-item>
           <el-button class="submit" type="primary" native-type="submit" :loading="loading">
-            进入后台
+            登录
           </el-button>
         </el-form>
       </div>
@@ -133,6 +143,7 @@ async function submit(): Promise<void> {
 }
 
 .card {
+  box-sizing: border-box;
   width: min(100%, 380px);
   padding: 28px;
   background: var(--aurel-surface);
@@ -147,6 +158,10 @@ async function submit(): Promise<void> {
 .card__hint {
   margin: 8px 0 20px;
   color: var(--aurel-muted);
+}
+
+.form-error {
+  margin-bottom: 16px;
 }
 
 .login__panel {

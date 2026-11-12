@@ -67,6 +67,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '财务' },
       },
       {
+        path: 'settings/wechat-pay',
+        name: 'settings-wechat-pay',
+        component: () => import('@/views/settings/WechatPayView.vue'),
+        meta: { title: '微信支付', section: '设置' },
+      },
+      {
         path: ':pathMatch(.*)*',
         name: 'not-found',
         component: () => import('@/views/error/NotFoundView.vue'),

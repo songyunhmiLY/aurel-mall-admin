@@ -8,4 +8,5 @@ export const paths = {
   cmsArticles: '/cms/articles',
   cmsSubtitles: '/cms/subtitles',
   finance: '/finance',
+  settingsWechatPay: '/settings/wechat-pay',
 } as const

@@ -23,7 +23,12 @@ function filterMenus(items: AdminMenuItem[]): AdminMenuItem[] {
 }
 
 const menus = computed(() => filterMenus(adminMenus))
-const opened = computed(() => (route.path.startsWith('/cms') ? ['cms'] : []))
+const opened = computed(() => {
+  const keys: string[] = []
+  if (route.path.startsWith('/cms')) keys.push('cms')
+  if (route.path.startsWith('/settings')) keys.push('settings')
+  return keys
+})
 </script>
 
 <template>

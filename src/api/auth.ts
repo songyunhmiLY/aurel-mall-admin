@@ -1,3 +1,5 @@
+import { ApiError, http } from './http'
+
 export interface LoginPayload {
   username: string
   password: string
@@ -8,27 +10,32 @@ export interface LoginResult {
   username: string
 }
 
-export class AuthRequestError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'AuthRequestError'
-  }
-}
-
 /**
- * 登录契约尚未与 aurel-mall-api 对齐。
- * 当前签发本地占位 token，便于在没有后端时查看布局。
- * 对接时改为：http.post<LoginResult>('/auth/login', { username, password })，
- * 基址来自 VITE_API_BASE_URL（已含 /api/v1）。
+ * POST /admin/auth/login
+ * 基址 VITE_API_BASE_URL 已含 /api/v1，完整路径为 /api/v1/admin/auth/login。
+ * 成功时 data 为 { token, username }。密码只交给后端校验。
  */
 export async function login(payload: LoginPayload): Promise<LoginResult> {
   const username = payload.username.trim()
   if (!username || !payload.password) {
-    throw new AuthRequestError('请输入用户名和密码')
+    throw new ApiError('请输入用户名和密码', 400)
   }
 
-  return {
-    token: `stub.${crypto.randomUUID()}`,
-    username,
+  const { data } = await http.post<unknown>(
+    '/admin/auth/login',
+    { username, password: payload.password },
+    { skipAuth: true },
+  )
+  return readLoginResult(data, username)
+}
+
+function readLoginResult(data: unknown, fallbackUsername: string): LoginResult {
+  if (typeof data !== 'object' || data === null) {
+    throw new ApiError('登录响应无效，未返回 token', 500)
   }
+  const record = data as Record<string, unknown>
+  const token = typeof record.token === 'string' ? record.token.trim() : ''
+  if (!token) throw new ApiError('登录响应无效，未返回 token', 500)
+  const username = typeof record.username === 'string' ? record.username.trim() : ''
+  return { token, username: username || fallbackUsername }
 }
