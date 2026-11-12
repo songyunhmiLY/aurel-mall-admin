@@ -40,6 +40,7 @@ export const adminMenus: AdminMenuItem[] = [
     path: paths.catalog,
     icon: Goods,
     permission: 'catalog',
+    placeholder: false,
   },
   {
     key: 'order',
@@ -54,6 +55,7 @@ export const adminMenus: AdminMenuItem[] = [
     path: paths.member,
     icon: User,
     permission: 'member',
+    placeholder: false,
   },
   {
     key: 'cms',

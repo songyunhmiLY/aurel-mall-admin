@@ -13,7 +13,8 @@ export interface LoginResult {
 /**
  * POST /admin/auth/login
  * 基址 VITE_API_BASE_URL 已含 /api/v1，完整路径为 /api/v1/admin/auth/login。
- * 成功时 data 为 { token, username }。密码只交给后端校验。
+ * 成功时 data 为 { token, tokenType, expiresAt, admin: { id, username, displayName } }。
+ * 用户名优先用 data.admin.username，其次顶层 username。密码只交给后端校验。
  */
 export async function login(payload: LoginPayload): Promise<LoginResult> {
   const username = payload.username.trim()
@@ -36,6 +37,12 @@ function readLoginResult(data: unknown, fallbackUsername: string): LoginResult {
   const record = data as Record<string, unknown>
   const token = typeof record.token === 'string' ? record.token.trim() : ''
   if (!token) throw new ApiError('登录响应无效，未返回 token', 500)
-  const username = typeof record.username === 'string' ? record.username.trim() : ''
-  return { token, username: username || fallbackUsername }
+  const admin = record.admin
+  const adminUsername =
+    typeof admin === 'object' && admin !== null && 'username' in admin
+      ? (admin as { username?: unknown }).username
+      : undefined
+  const nested = typeof adminUsername === 'string' ? adminUsername.trim() : ''
+  const topLevel = typeof record.username === 'string' ? record.username.trim() : ''
+  return { token, username: nested || topLevel || fallbackUsername }
 }

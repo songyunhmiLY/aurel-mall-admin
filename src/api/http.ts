@@ -17,6 +17,11 @@ declare module 'axios' {
     /** 登录等匿名请求不要附带本地 token，401 也不要清会话。 */
     skipAuth?: boolean
   }
+
+  export interface AxiosResponse {
+    /** 统一包络里的 message。code 为 0 时 data 仍交给调用方，提示语留在这里。 */
+    apiMessage?: string
+  }
 }
 
 export class ApiError extends Error {
@@ -30,13 +35,13 @@ export class ApiError extends Error {
 }
 
 function resolveBaseURL(): string {
-  const raw = import.meta.env.VITE_API_BASE_URL?.trim() ?? ''
+  const raw = import.meta.env?.VITE_API_BASE_URL?.trim() ?? ''
   return raw.replace(/\/+$/, '')
 }
 
 const baseURL = resolveBaseURL()
 
-if (!baseURL && import.meta.env.DEV) {
+if (!baseURL && import.meta.env?.DEV) {
   console.warn('[aurel-admin] 未配置 VITE_API_BASE_URL。请复制 .env.example 为 .env.local')
 }
 
@@ -62,6 +67,7 @@ http.interceptors.response.use(
       if (body.code === 401 && !response.config.skipAuth) onUnauthorized?.()
       return Promise.reject(new ApiError(body.message || '请求失败', body.code))
     }
+    response.apiMessage = body.message
     response.data = body.data
     return response
   },
