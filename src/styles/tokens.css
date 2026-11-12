@@ -1,0 +1,21 @@
+:root {
+  --aurel-ink: #172033;
+  --aurel-ink-soft: #243049;
+  --aurel-paper: #f3f5f7;
+  --aurel-surface: #ffffff;
+  --aurel-line: #e3e8ee;
+  --aurel-muted: #667085;
+  --aurel-accent: #0f6e62;
+  --aurel-accent-strong: #0c5b51;
+  --aurel-sidebar: #152033;
+  --aurel-sidebar-text: #d5dbe6;
+  --aurel-header-height: 56px;
+  --el-color-primary: #0f6e62;
+  --el-color-primary-light-3: #4d9a91;
+  --el-color-primary-light-5: #87bdb7;
+  --el-color-primary-light-7: #b7d7d3;
+  --el-color-primary-light-8: #d0e6e3;
+  --el-color-primary-light-9: #e7f3f2;
+  --el-color-primary-dark-2: #0c584e;
+  color-scheme: light;
+}
