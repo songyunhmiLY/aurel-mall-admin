@@ -42,7 +42,11 @@ const modules = leaves(adminMenus).filter((item) => permission.canAccess(item.pe
   <section class="home">
     <header>
       <h1>首页</h1>
-      <p>欢迎回来，{{ username }}。微信支付可以在「设置」里填写并保存，其余模块仍待实现。</p>
+      <p>
+        欢迎回来，{{
+          username
+        }}。商品和会员可以管理，微信支付在「设置」里保存。订单、内容、财务仍待实现。
+      </p>
     </header>
     <ul class="modules">
       <li v-for="item in modules" :key="item.path">

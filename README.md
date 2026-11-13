@@ -1,6 +1,6 @@
 # 奥瑞尔经销商城 · 管理后台
 
-经销商城管理端前端（`aurel-mall-admin`）。包含登录、侧栏布局、路由、请求层、微信支付配置，以及各业务模块的占位页。商品、订单、会员、内容、财务的具体功能还没做。
+经销商城管理端前端（`aurel-mall-admin`）。包含登录、侧栏布局、路由、请求层、商品、会员和微信支付配置。订单、内容、财务仍是占位页。
 
 ## 相关仓库
 
@@ -77,7 +77,7 @@ npm run build -- --base=/admin/
 
 ## 已对接的接口
 
-`aurel-mall-api` 的 main 目前还没有这两条业务路由（管理端守卫仍是占位）。客户端按下面的契约调用，响应包一层 `{ "code": 0, "message": "ok", "data": ... }`，失败时 HTTP 状态与 `code` 相同，`message` 为原因。
+客户端按 `aurel-mall-api` 已提供的契约调用。响应包一层 `{ "code": 0, "message": "ok", "data": ... }`，失败时 HTTP 状态与 `code` 相同，`message` 为原因。JSON 里的编号是十进制字符串。
 
 登录：
 
@@ -88,7 +88,7 @@ Content-Type: application/json
 { "username": "admin", "password": "<密码>" }
 ```
 
-成功时 `data` 为 `{ "token": "<会话>", "username": "admin" }`。`token` 必填。之后请求头为 `Authorization: Bearer <token>`。失败时展示 `message`，例如「用户名或密码错误」。只有一种管理员角色，客户端不读取权限列表。
+成功时 `data` 为 `{ "token": "<会话>", "tokenType": "Bearer", "expiresAt": "<时间>", "admin": { "id": "<id>", "username": "admin", "displayName": "<显示名>" } }`。`token` 必填。用户名优先读 `data.admin.username`，没有则读顶层 `username`，再没有就用登录时填写的用户名。之后请求头为 `Authorization: Bearer <token>`。失败时展示 `message`，例如「用户名或密码错误」。只有一种管理员角色，客户端不读取权限列表。
 
 微信支付配置：
 
@@ -110,6 +110,78 @@ Authorization: Bearer <token>
 `GET` 的 `data` 为 `null` 时，页面按未配置展示。`PUT` 的 JSON 始终带 `mchId`（空字符串表示清空）。证书和密钥留空则不传这两个字段，表示不修改服务器上的原文。页面若看到掩码，只展示掩码，不会把它当作新密钥提交。接口若返回了不含 `*` 的原文，页面只显示「已配置」，不把原文画出来。
 
 商户号和证书还没齐时，页面仍允许保存，并说明后端可以用沙箱或模拟成功。这里没有沙箱开关，也不把密钥写进前端环境变量或仓库。
+
+商品：
+
+```http
+GET /api/v1/admin/products?zone=&status=&categoryId=&page=&pageSize=
+GET /api/v1/admin/products/:id
+POST /api/v1/admin/products
+PUT /api/v1/admin/products/:id
+POST /api/v1/admin/products/:id/shelf
+PUT /api/v1/admin/products/:id/stock
+GET /api/v1/admin/mall-categories
+POST /api/v1/admin/mall-categories
+```
+
+`zone` 为 `startup`（创业专区）或 `mall`（会员商城），`status` 为 `draft` / `on` / `off`。列表和保存以外的详情，`data` 都是商品对象。列表 `data` 是 `{ "items", "total", "page", "pageSize" }`，默认每页 20。创建和更新的 `data` 是 `{ "product", "warnings" }`。`PUT` 不能改专区，也不带库存。
+
+创建 body：
+
+| 字段            | 含义                                                            |
+| --------------- | --------------------------------------------------------------- |
+| `zone`          | `startup` 或 `mall`。只在创建时提交                             |
+| `name`          | 名称                                                            |
+| `subtitle`      | 副标题，可空                                                    |
+| `body`          | 详情，可空                                                      |
+| `coverUrl`      | 封面 URL，可空                                                  |
+| `imageUrls`     | 附图 URL 数组，最多 20 个                                       |
+| `freightFen`    | 运费，单位分                                                    |
+| `priceFen`      | 售价，单位分。会员商城必填。创业专区不传，由接口按锁定单价写入  |
+| `pvFen`         | 仅会员商城。单位分，`100` = 1 PV = 1 元，不是售价。创业专区不传 |
+| `categoryId`    | 会员商城分类编号，字符串；`null` 表示不选。创业专区不传         |
+| `stockQuantity` | 创建时的库存。改库存不走这个字段                                |
+| `status`        | `draft` / `on` / `off`。不传时接口默认草稿                      |
+
+上下架是 `POST /admin/products/:id/shelf`，body 为 `{ "status": "on" | "off" }`。库存是 `PUT /admin/products/:id/stock`，body 为 `{ "quantity": 10 }`，表示把可售数量改成这个值。
+
+创业专区不能手填价格。页面不提交 `priceFen`，保存后展示接口落定的 `priceFen`。会员商城若 PV 大于售价，仍保存，并展示 `warnings`（例如「PV 大于售价」）。若创业专区请求里的售价不是锁定单价，接口仍按锁定单价保存，并在 `warnings` 里说明。
+
+分类：
+
+```http
+GET /api/v1/admin/mall-categories
+POST /api/v1/admin/mall-categories
+```
+
+`GET` 的 `data` 是数组，元素为 `id`、`name`、`sortOrder`、`createdAt`、`updatedAt`。创建 body 为 `{ "name": "分类", "sortOrder": 0 }`。页面只做列表和新建。会员商城商品可以选一个分类。
+
+会员：
+
+```http
+GET /api/v1/admin/users?id=&nickname=&phone=&page=&pageSize=
+GET /api/v1/admin/users/:id
+GET /api/v1/admin/users/:id/kyc
+POST /api/v1/admin/users/:id/disable
+POST /api/v1/admin/users/:id/enable
+```
+
+列表 `data` 是 `{ "items", "total", "page", "pageSize" }`。`id` 精确，`nickname` 包含，`phone` 精确。用户对象不含 `kyc`。实名要再请求 `GET /admin/users/:id/kyc`。
+
+| 字段          | 含义                                 |
+| ------------- | ------------------------------------ |
+| `id`          | 用户 ID                              |
+| `nickname`    | 昵称                                 |
+| `phone`       | 手机号，可空                         |
+| `avatarUrl`   | 头像 URL，可空                       |
+| `inviteCode`  | 邀请码，可空                         |
+| `status`      | `active` 可登录，`disabled` 不能登录 |
+| `member`      | 是否有市场树席位                     |
+| `kycVerified` | 是否已核验实名                       |
+
+实名响应：`verified`、`realName`、`idNumber`、`mobile`。还没提交时 `verified` 为 `false`，文字字段为 `null`。页面只展示这三项文字，不展示证件照片。
+
+停用只表示该用户不能登录。没有额外处罚，也没有权限矩阵。只有一种管理员角色。
 
 ## 脚本
 
@@ -136,9 +208,9 @@ src/
   views/                  按业务模块分目录
     login/                登录
     dashboard/            首页
-    catalog/              商品（占位）
+    catalog/              商品：列表、新建、编辑、上下架、库存、分类
     order/                订单（占位）
-    member/               会员（占位）
+    member/               会员：列表、详情、停用和启用
     cms/                  内容：轮播、资讯、字幕（占位）
     finance/              财务（占位）
     settings/             微信支付配置
@@ -153,7 +225,7 @@ src/
 - 不建大而全的 `utils.ts`。
 - 不留注释掉的废代码。
 
-侧栏目前有：首页、商品、订单、会员、内容（轮播 / 资讯 / 字幕）、财务、设置（微信支付）。除微信支付外，占位页会写明「待实现」。
+侧栏目前有：首页、商品、订单、会员、内容（轮播 / 资讯 / 字幕）、财务、设置（微信支付）。商品、会员和微信支付可用。订单、内容、财务仍写明「待实现」。不在本页做发货、退款、提现、消息推送、营销经理门槛、联合创始人、工作室或资金明细。
 
 ## 权限
 
