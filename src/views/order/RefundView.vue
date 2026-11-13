@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 
 import { apiErrorMessage } from '@/api/http'
 import { fetchRefunds, type AdminRefund, type RefundQuery } from '@/api/refunds'
+import { routeQueryText } from '@/router/query'
 import { formatShanghaiTime } from '@/utils/datetime'
 import RefundReviewDrawer from './RefundReviewDrawer.vue'
 import { fenText } from './order-labels'
@@ -25,8 +27,15 @@ const filters = reactive({
 })
 const detailOpen = ref(false)
 const detailRefund = ref<AdminRefund | null>(null)
+const route = useRoute()
 
 onMounted(() => {
+  const status = routeQueryText(route.query.status)
+  const userId = routeQueryText(route.query.userId)
+  if (status === 'pending' || status === 'approved' || status === 'rejected') {
+    filters.status = status
+  }
+  if (/^\d+$/.test(userId)) filters.userId = userId
   void load()
 })
 

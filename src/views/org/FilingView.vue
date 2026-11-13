@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 
 import {
   fetchFilings,
@@ -9,6 +10,7 @@ import {
 } from '@/api/filings'
 import { apiErrorMessage } from '@/api/http'
 import { decimalFenText, fenToYuan } from '@/api/money'
+import { routeQueryText } from '@/router/query'
 import { formatShanghaiTime } from '@/utils/datetime'
 import { filingStatusLabel, isLuckySequence } from './filing-labels'
 
@@ -27,8 +29,15 @@ const filters = reactive({
   bizDate: '',
   sequence: '',
 })
+const route = useRoute()
 
 onMounted(() => {
+  const userId = routeQueryText(route.query.userId)
+  const bizDate = routeQueryText(route.query.bizDate)
+  const sequence = routeQueryText(route.query.sequence)
+  if (/^\d+$/.test(userId)) filters.userId = userId
+  if (/^\d{4}-\d{2}-\d{2}$/.test(bizDate)) filters.bizDate = bizDate
+  if (/^[1-9]\d*$/.test(sequence)) filters.sequence = sequence
   void load()
 })
 

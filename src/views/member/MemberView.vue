@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 
 import { apiErrorMessage } from '@/api/http'
 import { fetchMembers, memberFlagLabel, memberStatusLabel, type MemberSummary } from '@/api/members'
+import { routeQueryText } from '@/router/query'
 import MemberDetailDrawer from './MemberDetailDrawer.vue'
 
 const pageSize = 20
@@ -18,8 +20,11 @@ const filters = reactive({
 })
 const detailOpen = ref(false)
 const detailId = ref<string | null>(null)
+const route = useRoute()
 
 onMounted(() => {
+  const id = routeQueryText(route.query.id)
+  if (/^\d+$/.test(id)) filters.id = id
   void load()
 })
 

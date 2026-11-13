@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 
 import { apiErrorMessage } from '@/api/http'
 import { decimalFenText } from '@/api/money'
 import { fetchRewardEntries, type AwardType, type RewardEntry } from '@/api/reward-entries'
+import { routeQueryText } from '@/router/query'
 import { formatShanghaiTime } from '@/utils/datetime'
 import { walletTypeLabel } from './wallet-labels'
 import { awardTypeLabel, awardTypeOptions } from './award-labels'
@@ -21,7 +23,24 @@ const filters = reactive({
   layer: '',
 })
 
+const route = useRoute()
+
 onMounted(() => {
+  const rewardType = routeQueryText(route.query.rewardType)
+  const userId = routeQueryText(route.query.userId)
+  const orderId = routeQueryText(route.query.orderId)
+  const layer = routeQueryText(route.query.layer)
+  if (
+    rewardType === 'startup_sales' ||
+    rewardType === 'startup_points' ||
+    rewardType === 'mall_sales' ||
+    rewardType === 'mall_points'
+  ) {
+    filters.rewardType = rewardType
+  }
+  if (/^\d+$/.test(userId)) filters.userId = userId
+  if (/^\d+$/.test(orderId)) filters.orderId = orderId
+  if (/^\d+$/.test(layer)) filters.layer = layer
   void load()
 })
 

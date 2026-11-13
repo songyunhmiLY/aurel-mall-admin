@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 
 import { apiErrorMessage } from '@/api/http'
 import { decimalFenText } from '@/api/money'
 import { fetchWithdrawals, type AdminWithdrawal, type WithdrawalQuery } from '@/api/withdrawals'
+import { routeQueryText } from '@/router/query'
 import { formatShanghaiTime } from '@/utils/datetime'
 import WithdrawalDetailDrawer from './WithdrawalDetailDrawer.vue'
 import {
@@ -24,8 +26,13 @@ const filters = reactive({
 })
 const detailOpen = ref(false)
 const detailId = ref<string | null>(null)
+const route = useRoute()
 
 onMounted(() => {
+  const status = routeQueryText(route.query.status)
+  const userId = routeQueryText(route.query.userId)
+  if (status === 'pending' || status === 'rejected' || status === 'paid') filters.status = status
+  if (/^\d+$/.test(userId)) filters.userId = userId
   void load()
 })
 
