@@ -1,6 +1,6 @@
 # 奥瑞尔经销商城 · 管理后台
 
-经销商城管理端前端（`aurel-mall-admin`）。包含登录、侧栏布局、路由、请求层、商品、会员、订单发货、商城退款、提现审核、提现分类和微信支付配置。内容、财务总览仍是占位页。
+经销商城管理端前端（`aurel-mall-admin`）。包含登录、侧栏布局、路由、请求层、商品、会员、订单发货、商城退款、提现审核、组织关系、奖励明细、提现分类和微信支付配置。内容、财务总览仍是占位页。
 
 ## 相关仓库
 
@@ -196,29 +196,29 @@ Authorization: Bearer <token>
 
 详情和列表里的每一项都是订单。编号是十进制字符串。带 `Fen` 的金额是 JSON 数字，单位分。
 
-| 字段 | 含义 |
-| --- | --- |
-| `id` | 订单 ID |
-| `orderNo` | 订单号 |
-| `userId` | 下单用户 ID |
-| `zone` | `startup` 或 `mall` |
-| `status` | `pending_payment` / `paid` / `shipped` / `closed` |
-| `goodsTotalFen` | 商品金额 |
-| `freightFen` | 运费 |
-| `payAmountFen` | 应付，等于商品金额加运费 |
-| `pvFen` | 订单 PV。会员商城为各行之和，创业专区为 0。不是售价 |
-| `pointsFen` | 积分支付金额。未支付时为 0 |
-| `withdrawableFen` | 可提现账户支付金额。未支付时为 0 |
-| `consumptionFen` | 消费账户支付金额。未支付时为 0 |
-| `wechatFen` | 微信支付金额。未支付时为 0 |
-| `shipping` | 下单时的地址快照：`contactName`、`contactPhone`、`province`、`city`、`district`、`detail` |
-| `courierName` | 快递公司。未发货为 `null` |
-| `trackingNumber` | 运单号。未发货为 `null` |
-| `items` | 订单行 |
-| `placedAt` | 下单时间 |
-| `paidAt` | 支付时间，可空 |
-| `shippedAt` | 发货时间，可空 |
-| `closedAt` | 关闭时间，可空 |
+| 字段              | 含义                                                                                      |
+| ----------------- | ----------------------------------------------------------------------------------------- |
+| `id`              | 订单 ID                                                                                   |
+| `orderNo`         | 订单号                                                                                    |
+| `userId`          | 下单用户 ID                                                                               |
+| `zone`            | `startup` 或 `mall`                                                                       |
+| `status`          | `pending_payment` / `paid` / `shipped` / `closed`                                         |
+| `goodsTotalFen`   | 商品金额                                                                                  |
+| `freightFen`      | 运费                                                                                      |
+| `payAmountFen`    | 应付，等于商品金额加运费                                                                  |
+| `pvFen`           | 订单 PV。会员商城为各行之和，创业专区为 0。不是售价                                       |
+| `pointsFen`       | 积分支付金额。未支付时为 0                                                                |
+| `withdrawableFen` | 可提现账户支付金额。未支付时为 0                                                          |
+| `consumptionFen`  | 消费账户支付金额。未支付时为 0                                                            |
+| `wechatFen`       | 微信支付金额。未支付时为 0                                                                |
+| `shipping`        | 下单时的地址快照：`contactName`、`contactPhone`、`province`、`city`、`district`、`detail` |
+| `courierName`     | 快递公司。未发货为 `null`                                                                 |
+| `trackingNumber`  | 运单号。未发货为 `null`                                                                   |
+| `items`           | 订单行                                                                                    |
+| `placedAt`        | 下单时间                                                                                  |
+| `paidAt`          | 支付时间，可空                                                                            |
+| `shippedAt`       | 发货时间，可空                                                                            |
+| `closedAt`        | 关闭时间，可空                                                                            |
 
 订单行：`id`、`skuId`、`productName`、`skuName`、`unitPriceFen`、`unitPvFen`、`unitFreightFen`、`quantity`、`lineTotalFen`、`linePvFen`、`lineFreightFen`。
 
@@ -242,17 +242,17 @@ Authorization: Bearer <token>
 
 列表 `data` 是 `{ "items", "total", "page", "pageSize" }`。`status` 为 `pending`（待处理）、`rejected`（已驳回）、`paid`（已打款）。申请金额和结算金额是十进制字符串，单位分。驳回和打款没有请求体。
 
-| 字段 | 含义 |
-| --- | --- |
-| `id` / `userId` | 申请 ID、用户 ID |
-| `amountFen` | 申请金额 |
-| `status` | `pending` / `rejected` / `paid` |
-| `accountName` | 开户名。申请时的账户快照 |
-| `bankName` | 开户银行 |
-| `accountNo` | 银行卡号 |
-| `branchName` | 开户支行 |
-| `appliedAt` | 申请时间 |
-| `settlement` | 未处理时为 `null`。否则含 `outcome`、`amountFen`、`feeFen`、`payoutFen`、`adminId`、`settledAt` |
+| 字段            | 含义                                                                                            |
+| --------------- | ----------------------------------------------------------------------------------------------- |
+| `id` / `userId` | 申请 ID、用户 ID                                                                                |
+| `amountFen`     | 申请金额                                                                                        |
+| `status`        | `pending` / `rejected` / `paid`                                                                 |
+| `accountName`   | 开户名。申请时的账户快照                                                                        |
+| `bankName`      | 开户银行                                                                                        |
+| `accountNo`     | 银行卡号                                                                                        |
+| `branchName`    | 开户支行                                                                                        |
+| `appliedAt`     | 申请时间                                                                                        |
+| `settlement`    | 未处理时为 `null`。否则含 `outcome`、`amountFen`、`feeFen`、`payoutFen`、`adminId`、`settledAt` |
 
 打款不由系统发起转账。确认表示财务已经把「申请金额 − 当时手续费」转到上述银行卡。手续费是打款当时的锁定值，不是申请时的值。接口在打款前不返回这个数字，确认框说明规则；成功后用返回的 `feeFen` 和 `payoutFen` 展示手续费和实际打款。驳回时这两项为 `null`。重复处理返回「提现申请已处理」。手续费高于申请金额返回「当前手续费高于提现金额，无法打款」，冻结保持不变。
 
@@ -277,16 +277,16 @@ Authorization: Bearer <token>
 
 另一项由接口计算，并且退款金额 + 减扣金额 = 应付（含运费，`payAmountFen`）。页面会预览另一项，但请求仍只带所填的那一项。可以少于整单。驳回没有请求体。
 
-| 字段 | 含义 |
-| --- | --- |
-| `payAmountFen` | 应付，含运费 |
-| `freightFen` | 运费。不会自动计入减扣 |
-| `deductionHint` | 接口给出的提示，例如运费和其他应扣费用不会自动计入减扣 |
-| `refundFen` / `deductionFen` | 审核后才有 |
-| `wechatRefundFen` | 微信实退 |
-| `withdrawableDeductionFen` | 从该订单可提现部分减扣的金额 |
-| `consumptionCreditFen` | 退回消费账户的金额 |
-| `wechatRefundStatus` | `none` / `sandbox` / `accepted`，未审核时为 `null` |
+| 字段                         | 含义                                                   |
+| ---------------------------- | ------------------------------------------------------ |
+| `payAmountFen`               | 应付，含运费                                           |
+| `freightFen`                 | 运费。不会自动计入减扣                                 |
+| `deductionHint`              | 接口给出的提示，例如运费和其他应扣费用不会自动计入减扣 |
+| `refundFen` / `deductionFen` | 审核后才有                                             |
+| `wechatRefundFen`            | 微信实退                                               |
+| `withdrawableDeductionFen`   | 从该订单可提现部分减扣的金额                           |
+| `consumptionCreditFen`       | 退回消费账户的金额                                     |
+| `wechatRefundStatus`         | `none` / `sandbox` / `accepted`，未审核时为 `null`     |
 
 创业专区订单不能退款，接口会拒绝。页面不另加审核字段。两项都填、或都不填，返回「请只填写退款金额或减扣金额」。重复处理返回「退款申请已处理」。
 
@@ -299,6 +299,81 @@ Authorization: Bearer <token>
 ```
 
 `data` 为 `{ "items": [{ "sourceCode", "displayName" }] }`。`PUT` body 同样是 `{ "items": [{ "sourceCode", "displayName" }] }`。只提交接口返回的来源，不新增来源。显示名相同的来源会合并成一个分类。默认对应关系：系统奖励 `cofounder`，系统激励 `studio`，平台分红 `operations`，系统红包 `red_packet`，销售激励 `startup_sales` / `startup_points` / `mall_sales` / `mall_points`，幸运返还 `filing_settlement`，业绩奖 `position_dividend`。
+
+营销经理门槛 T，以及下面的组织、报单、职位分红、奖励明细和会员钱包，对齐 `aurel-mall-api` 阶段 4 开放中的契约（PR #7，分支 `cursor/stage4-filing-awards-positions-8d5b`，提交 `ac38ee7`）。这些路径还没进 API 的 main。页面不自己计算资格、份额或幸运返还金额，失败时展示接口 `message`。发放日能不能改，由接口按业务时钟判断。职位名直接显示接口返回的 `positionName`。
+
+编号是十进制字符串。钱包金额、奖励金额、分红金额、报单结算入账和门槛 T 都是十进制字符串，单位分。报单 `amountFen` 和结算里的 `unitPriceFen` 是 JSON 数字。
+
+营销经理门槛：
+
+```http
+GET /api/v1/admin/settings/marketing-manager-market-threshold
+PUT /api/v1/admin/settings/marketing-manager-market-threshold
+```
+
+`GET` / `PUT` 的 `data` 是 `{ "month", "thresholdFen", "nextMonth", "nextThresholdFen" }`。`PUT` body 仍是 `{ "value": "1000000" }`，`value` 为非负整数字符串，单位分。保存只写入下月，本月 `thresholdFen` 不变。格式不对时展示「门槛 T 必须是非负整数字符串」或「门槛 T 必须是非负整数」。
+
+邀请关系：
+
+```http
+GET /api/v1/admin/users/:id/invite
+GET /api/v1/admin/users/:id/invite/ancestors
+GET /api/v1/admin/users/:id/invite/descendants?depth=
+```
+
+`invite` 含 `user`、`inviter`（没有上级时为 `null`）和 `directInvitees`。人物字段是 `userId`、`nickname`、`inviteCode`、`member`。直接邀请另有 `joinedAt`。上级链和下级链的 `data` 是 `{ "items" }`，元素另有 `parentUserId`、`depth`。下级还可以带响应里的 `depth`。不传 `depth` 时接口默认 5，合法范围 1 到 20。用户不存在是 404「用户不存在」。页面不能改上级。
+
+市场关系：
+
+```http
+GET /api/v1/admin/users/:id/market-tree
+```
+
+`data` 含 `userId`、`seated`、`depth`、`placedAt`、`parent` 和 `markets`。未入座时 `seated` 为 `false`，`markets` 为空。`markets` 从左到右，每项是直接市场：`userId`、`nickname`、`placedAt`、`memberCount`、`members`。成员含 `userId`、`nickname`、`depth`、`placedAt`。页面不能调整席位。
+
+报单与公排：
+
+```http
+GET /api/v1/admin/filings?userId=&bizDate=&sequence=&page=&pageSize=
+GET /api/v1/admin/filings/:id
+GET /api/v1/admin/filing-settlements?userId=&page=&pageSize=
+```
+
+`bizDate` 是上海自然日 `YYYY-MM-DD`。列表项含 `id`、`filingNo`、`userId`、`nickname`、`orderId`、`subOrderId`、`sequence`、`bizDate`、`status`、`amountFen`、`filedAt`、`settledAt`、`settlement`、`triggeredSettlement`。`sequence` 和 `bizDate` 在还没排上时为 `null`。`settlement` 是这一笔自己领到的幸运返还；序号是 5 的倍数时，`triggeredSettlement` 是当时发给序号 k 的返还。结算字段：`triggerSequence`、`beneficiaryFilingId`、`beneficiaryUserId`、`pointsFen`、`withdrawableFen`、`unitPriceFen`、`withdrawalRatioBps`、`settledAt`。日期不对是「日期不正确」，序号不对是「序号不正确」。
+
+职位分红：
+
+```http
+GET /api/v1/admin/position-dividends?month=YYYY-MM
+GET /api/v1/admin/position-dividends/qualifications/:userId?month=YYYY-MM
+PUT /api/v1/admin/position-dividends/:month/payout-date
+POST /api/v1/admin/position-dividends/:month/exclusions
+POST /api/v1/admin/position-dividends/:month/manual-payments
+GET /api/v1/admin/position-dividends/:month/records?page=&pageSize=
+```
+
+不传 `month` 时接口用已经结束的上一个业绩月。当月或未来月返回「业绩月份尚未结束」。方案含 `performanceMonth`、`payoutMonth`、`payoutDate`（`YYYY-MM-DD`，默认次月 15 日）、`status`（`open` / `paid`）、`thresholdFen`、`mallPvFen`、`pools`。每个池含 `positionCode`、`positionName`、`poolBps`、`exclusive`、`poolFen`、`eligibleCount`、`shareFen`、`members`。成员含 `userId`、`nickname`、`removed`、`originalAmountFen`、`payment`。`payment` 为 `null` 或 `{ "mode", "actualAmountFen", "remark", "paidAt" }`。
+
+修改发放日的 body 是 `{ "payoutDate": "2026-12-16" }`，必须落在业绩月的次月，并且是尚未到来的日期。已发放返回「本期已发放，不能修改发放日」。停止自动发放的 body 是 `{ "userId": "1" }`，一次一人，份额不重新分配。手工发放只接受已经停止自动发放的会员，body 是 `{ "userId", "positionCode", "actualAmountFen", "remark" }`，`actualAmountFen` 是十进制分，`remark` 为 1 到 200 字。考核结果含 `ranks`（`qualified`、`inPool`）和直接市场的 `performanceFen`。发放记录含原金额、实发、备注和方式 `auto` / `manual`。页面不提供整期立即发放。
+
+奖励明细：
+
+```http
+GET /api/v1/admin/awards?rewardType=&orderId=&userId=&layer=&page=&pageSize=
+```
+
+`rewardType` 为 `startup_sales`（创业专区销售奖）、`startup_points`（创业专区见点奖）、`mall_sales`（会员商城销售奖）、`mall_points`（会员商城见点奖）。不传则这四类都返回。层级 1 到 15，销售奖的层级是 1。列表项：`id`、`userId`、`nickname`、`rewardType`、`orderId`、`layer`、`amountFen`、`occurredAt`、`wallets`。`wallets` 的每一项是 `walletType`、`amountFen`、`sourceCode`。类型不对是「奖励类型不正确」，层数不对是「层数不正确」。
+
+会员钱包：
+
+```http
+GET /api/v1/admin/users/:id/wallets
+GET /api/v1/admin/users/:id/wallets/:walletType/ledger?page=&pageSize=
+GET /api/v1/admin/users/:id/wallet-holds?status=&page=&pageSize=
+GET /api/v1/admin/transfers?payerId=&payeeId=&page=&pageSize=
+```
+
+余额形状与 `GET /me/wallets` 相同。流水字段与会员端一致。冻结多一个 `updatedAt`。划转按付款人、收款人分别筛选，记录含 `payerNickname`、`payeeNickname`。页面只查询，不发起划转。用户不存在是「用户不存在」。用户资料仍用 `GET /admin/users/:id`。
 
 ## 脚本
 
@@ -328,11 +403,13 @@ src/
     catalog/              商品：列表、新建、编辑、上下架、库存、分类
     order/                订单：列表、详情、发货；商城退款审核
     member/               会员：列表、详情、停用和启用
+    org/                  组织：邀请关系、市场关系、报单与公排
+    rewards/              奖励：职位分红、奖励明细、会员钱包
     cms/                  内容：轮播、资讯、字幕（占位）
     finance/              提现审核；财务总览仍是占位
     settings/             微信支付配置、提现分类显示名
   components/             跨页面的小组件
-  utils/                  很小的通用函数，目前只有会话读写
+  utils/                  会话读写，以及上海时区的时间显示
 ```
 
 约定：
@@ -342,7 +419,9 @@ src/
 - 不建大而全的 `utils.ts`。
 - 不留注释掉的废代码。
 
-侧栏目前有：首页、商品、订单、商城退款、会员、提现审核、内容（轮播 / 资讯 / 字幕）、财务、设置（微信支付、提现分类）。商品、会员、订单、商城退款、提现审核、微信支付和提现分类可用。内容、财务总览仍写明「待实现」。订单页可以查询并发货。不在这里做转账、报单、奖励结算、邀请码管理、消息推送或财务总览。
+侧栏目前有：首页、商品、订单、商城退款、会员、组织（邀请关系 / 市场关系 / 报单公排）、奖励（职位分红 / 奖励明细 / 会员钱包）、提现审核、内容（轮播 / 资讯 / 字幕）、财务、设置（微信支付、提现分类）。商品、会员、订单、商城退款、提现审核、组织、奖励、微信支付和提现分类可用。内容、财务总览仍写明「待实现」。
+
+组织页可以沿邀请链和市场树查看，报单页查看全网公排和幸运返还结算。职位分红页可以改次月发放日、停止某会员的自动发放，并为已停止的会员登记手工发放。营销经理门槛 T 只写入下月。奖励明细按订单、层级和收款人查询销售奖与见点奖。会员钱包只查询三个账户、冻结和消费划转。不在这里做福利专场、联合创始人 / 工作室 / 运营团队身份、内容发布、消息推送、财务总览，也不修改锁定配置（比例、每日报单检查时间等）。页面不发起划转，也不提前执行整期自动发放。
 
 ## 权限
 

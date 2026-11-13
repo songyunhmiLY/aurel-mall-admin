@@ -49,6 +49,42 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '会员' },
       },
       {
+        path: 'org/invites',
+        name: 'org-invites',
+        component: () => import('@/views/org/InviteView.vue'),
+        meta: { title: '邀请关系', section: '组织' },
+      },
+      {
+        path: 'org/markets',
+        name: 'org-markets',
+        component: () => import('@/views/org/MarketView.vue'),
+        meta: { title: '市场关系', section: '组织' },
+      },
+      {
+        path: 'org/filings',
+        name: 'org-filings',
+        component: () => import('@/views/org/FilingView.vue'),
+        meta: { title: '报单与公排', section: '组织' },
+      },
+      {
+        path: 'rewards/positions',
+        name: 'reward-positions',
+        component: () => import('@/views/rewards/PositionView.vue'),
+        meta: { title: '职位分红', section: '奖励' },
+      },
+      {
+        path: 'rewards/awards',
+        name: 'reward-awards',
+        component: () => import('@/views/rewards/AwardView.vue'),
+        meta: { title: '奖励明细', section: '奖励' },
+      },
+      {
+        path: 'rewards/wallets',
+        name: 'reward-wallets',
+        component: () => import('@/views/rewards/WalletLookupView.vue'),
+        meta: { title: '会员钱包', section: '奖励' },
+      },
+      {
         path: 'cms/banners',
         name: 'cms-banners',
         component: () => import('@/views/cms/BannerView.vue'),

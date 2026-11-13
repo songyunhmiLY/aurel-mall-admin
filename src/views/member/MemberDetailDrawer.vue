@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { apiErrorMessage } from '@/api/http'
+import { paths } from '@/router/paths'
 import {
   fetchMember,
   fetchMemberKyc,
@@ -23,6 +25,7 @@ const emit = defineEmits<{
   changed: []
 }>()
 
+const router = useRouter()
 const loading = ref(false)
 const acting = ref(false)
 const loadError = ref('')
@@ -42,6 +45,13 @@ watch(
 
 function close(): void {
   emit('update:modelValue', false)
+}
+
+function openRelated(path: string): void {
+  const id = detail.value?.id
+  if (!id) return
+  close()
+  void router.push({ path, query: { userId: id } })
 }
 
 async function load(id: string): Promise<void> {
@@ -121,6 +131,13 @@ async function toggle(): Promise<void> {
           <el-descriptions-item label="手机号">{{ kyc.mobile || '—' }}</el-descriptions-item>
         </el-descriptions>
         <el-empty v-else description="尚未提交实名信息" :image-size="72" />
+
+        <h2>组织与钱包</h2>
+        <div class="actions">
+          <el-button @click="openRelated(paths.orgInvites)">邀请关系</el-button>
+          <el-button @click="openRelated(paths.orgMarkets)">市场关系</el-button>
+          <el-button @click="openRelated(paths.rewardWallets)">会员钱包</el-button>
+        </div>
 
         <div class="actions">
           <el-button
