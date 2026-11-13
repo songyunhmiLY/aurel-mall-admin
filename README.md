@@ -1,6 +1,6 @@
 # 奥瑞尔经销商城 · 管理后台
 
-经销商城管理端前端（`aurel-mall-admin`）。包含登录、侧栏布局、路由、请求层、商品、会员、订单发货和微信支付配置。内容、财务仍是占位页。
+经销商城管理端前端（`aurel-mall-admin`）。包含登录、侧栏布局、路由、请求层、商品、会员、订单发货、商城退款、提现审核、提现分类和微信支付配置。内容、财务总览仍是占位页。
 
 ## 相关仓库
 
@@ -230,6 +230,76 @@ Authorization: Bearer <token>
 
 只有 `paid` 可以变成 `shipped`。成功后详情里的状态、快递公司和运单号以接口返回为准。重复发货返回 409，`message` 为「订单已发货」。未支付或已关闭返回 409，「只有已支付的订单可以发货」。快递公司或运单号为空、或超过 64 个字，返回 400，「快递公司不正确」或「运单号不正确」。页面展示接口返回的 `message`，不把发货失败当成成功。
 
+提现审核：
+
+```http
+GET /api/v1/admin/withdrawals?status=&userId=&page=&pageSize=
+GET /api/v1/admin/withdrawals/:id
+POST /api/v1/admin/withdrawals/:id/reject
+POST /api/v1/admin/withdrawals/:id/payout
+Authorization: Bearer <token>
+```
+
+列表 `data` 是 `{ "items", "total", "page", "pageSize" }`。`status` 为 `pending`（待处理）、`rejected`（已驳回）、`paid`（已打款）。申请金额和结算金额是十进制字符串，单位分。驳回和打款没有请求体。
+
+| 字段 | 含义 |
+| --- | --- |
+| `id` / `userId` | 申请 ID、用户 ID |
+| `amountFen` | 申请金额 |
+| `status` | `pending` / `rejected` / `paid` |
+| `accountName` | 开户名。申请时的账户快照 |
+| `bankName` | 开户银行 |
+| `accountNo` | 银行卡号 |
+| `branchName` | 开户支行 |
+| `appliedAt` | 申请时间 |
+| `settlement` | 未处理时为 `null`。否则含 `outcome`、`amountFen`、`feeFen`、`payoutFen`、`adminId`、`settledAt` |
+
+打款不由系统发起转账。确认表示财务已经把「申请金额 − 当时手续费」转到上述银行卡。手续费是打款当时的锁定值，不是申请时的值。接口在打款前不返回这个数字，确认框说明规则；成功后用返回的 `feeFen` 和 `payoutFen` 展示手续费和实际打款。驳回时这两项为 `null`。重复处理返回「提现申请已处理」。手续费高于申请金额返回「当前手续费高于提现金额，无法打款」，冻结保持不变。
+
+商城退款：
+
+```http
+GET /api/v1/admin/refunds?status=&userId=&page=&pageSize=
+POST /api/v1/admin/refunds/:id/approve
+POST /api/v1/admin/refunds/:id/reject
+Authorization: Bearer <token>
+```
+
+没有单独的详情接口，列表项就是审核用的全部字段。`status` 为 `pending` / `approved` / `rejected`。带 `Fen` 的订单金额是 JSON 数字。通过时的 body 只能是下面两种之一，数字不能写成小数或字符串：
+
+```json
+{ "refundFen": 9000 }
+```
+
+```json
+{ "deductionFen": 1000 }
+```
+
+另一项由接口计算，并且退款金额 + 减扣金额 = 应付（含运费，`payAmountFen`）。页面会预览另一项，但请求仍只带所填的那一项。可以少于整单。驳回没有请求体。
+
+| 字段 | 含义 |
+| --- | --- |
+| `payAmountFen` | 应付，含运费 |
+| `freightFen` | 运费。不会自动计入减扣 |
+| `deductionHint` | 接口给出的提示，例如运费和其他应扣费用不会自动计入减扣 |
+| `refundFen` / `deductionFen` | 审核后才有 |
+| `wechatRefundFen` | 微信实退 |
+| `withdrawableDeductionFen` | 从该订单可提现部分减扣的金额 |
+| `consumptionCreditFen` | 退回消费账户的金额 |
+| `wechatRefundStatus` | `none` / `sandbox` / `accepted`，未审核时为 `null` |
+
+创业专区订单不能退款，接口会拒绝。页面不另加审核字段。两项都填、或都不填，返回「请只填写退款金额或减扣金额」。重复处理返回「退款申请已处理」。
+
+提现分类：
+
+```http
+GET /api/v1/admin/settings/withdrawal-display-names
+PUT /api/v1/admin/settings/withdrawal-display-names
+Authorization: Bearer <token>
+```
+
+`data` 为 `{ "items": [{ "sourceCode", "displayName" }] }`。`PUT` body 同样是 `{ "items": [{ "sourceCode", "displayName" }] }`。只提交接口返回的来源，不新增来源。显示名相同的来源会合并成一个分类。默认对应关系：系统奖励 `cofounder`，系统激励 `studio`，平台分红 `operations`，系统红包 `red_packet`，销售激励 `startup_sales` / `startup_points` / `mall_sales` / `mall_points`，幸运返还 `filing_settlement`，业绩奖 `position_dividend`。
+
 ## 脚本
 
 | 命令                 | 作用                      |
@@ -256,11 +326,11 @@ src/
     login/                登录
     dashboard/            首页
     catalog/              商品：列表、新建、编辑、上下架、库存、分类
-    order/                订单：列表、详情、发货
+    order/                订单：列表、详情、发货；商城退款审核
     member/               会员：列表、详情、停用和启用
     cms/                  内容：轮播、资讯、字幕（占位）
-    finance/              财务（占位）
-    settings/             微信支付配置
+    finance/              提现审核；财务总览仍是占位
+    settings/             微信支付配置、提现分类显示名
   components/             跨页面的小组件
   utils/                  很小的通用函数，目前只有会话读写
 ```
@@ -272,7 +342,7 @@ src/
 - 不建大而全的 `utils.ts`。
 - 不留注释掉的废代码。
 
-侧栏目前有：首页、商品、订单、会员、内容（轮播 / 资讯 / 字幕）、财务、设置（微信支付）。商品、会员、订单和微信支付可用。内容、财务仍写明「待实现」。订单页可以查询并发货。不在这里做退款、提现、转账、报单、奖励结算、市场树、邀请码管理或消息推送。
+侧栏目前有：首页、商品、订单、商城退款、会员、提现审核、内容（轮播 / 资讯 / 字幕）、财务、设置（微信支付、提现分类）。商品、会员、订单、商城退款、提现审核、微信支付和提现分类可用。内容、财务总览仍写明「待实现」。订单页可以查询并发货。不在这里做转账、报单、奖励结算、邀请码管理、消息推送或财务总览。
 
 ## 权限
 

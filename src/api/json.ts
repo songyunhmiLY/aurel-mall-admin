@@ -24,6 +24,27 @@ export function readInteger(value: unknown): number | null {
   return null
 }
 
+/**
+ * 钱包金额是十进制字符串，单位分。JSON 数字也接受。
+ * 无法解析时返回 null。
+ */
+export function readDecimalFen(value: unknown): string | null {
+  if (typeof value === 'bigint') return normalizeDecimalFen(value.toString())
+  if (typeof value === 'number' && Number.isSafeInteger(value)) return String(value)
+  if (typeof value === 'string' && /^-?\d+$/.test(value.trim())) {
+    return normalizeDecimalFen(value.trim())
+  }
+  return null
+}
+
+function normalizeDecimalFen(value: string): string | null {
+  const negative = value.startsWith('-')
+  const digits = (negative ? value.slice(1) : value).replace(/^0+(?=\d)/, '')
+  if (!digits) return null
+  if (digits === '0') return '0'
+  return `${negative ? '-' : ''}${digits}`
+}
+
 /** JSON 里的 bigint 编号是十进制字符串。 */
 export function readId(value: unknown): string {
   if (typeof value === 'string' && /^\d+$/.test(value.trim())) return value.trim()

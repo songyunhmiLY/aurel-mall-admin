@@ -37,6 +37,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '订单' },
       },
       {
+        path: 'order/refunds',
+        name: 'order-refunds',
+        component: () => import('@/views/order/RefundView.vue'),
+        meta: { title: '商城退款', section: '订单' },
+      },
+      {
         path: 'member',
         name: 'member',
         component: () => import('@/views/member/MemberView.vue'),
@@ -61,6 +67,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '字幕', section: '内容' },
       },
       {
+        path: 'withdrawals',
+        name: 'withdrawals',
+        component: () => import('@/views/finance/WithdrawalView.vue'),
+        meta: { title: '提现审核', section: '财务' },
+      },
+      {
         path: 'finance',
         name: 'finance',
         component: () => import('@/views/finance/FinanceView.vue'),
@@ -71,6 +83,12 @@ export const routes: RouteRecordRaw[] = [
         name: 'settings-wechat-pay',
         component: () => import('@/views/settings/WechatPayView.vue'),
         meta: { title: '微信支付', section: '设置' },
+      },
+      {
+        path: 'settings/withdrawal-display-names',
+        name: 'settings-withdrawal-display-names',
+        component: () => import('@/views/settings/WithdrawalDisplayNamesView.vue'),
+        meta: { title: '提现分类', section: '设置' },
       },
       {
         path: ':pathMatch(.*)*',
