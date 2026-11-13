@@ -85,6 +85,24 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '会员钱包', section: '奖励' },
       },
       {
+        path: 'welfare/entry',
+        name: 'welfare-entry',
+        component: () => import('@/views/welfare/EntryView.vue'),
+        meta: { title: '入口配置', section: '福利专场' },
+      },
+      {
+        path: 'welfare/signups',
+        name: 'welfare-signups',
+        component: () => import('@/views/welfare/SignupView.vue'),
+        meta: { title: '报名记录', section: '福利专场' },
+      },
+      {
+        path: 'welfare/participants',
+        name: 'welfare-participants',
+        component: () => import('@/views/welfare/ParticipantView.vue'),
+        meta: { title: '参与资格', section: '福利专场' },
+      },
+      {
         path: 'cms/banners',
         name: 'cms-banners',
         component: () => import('@/views/cms/BannerView.vue'),

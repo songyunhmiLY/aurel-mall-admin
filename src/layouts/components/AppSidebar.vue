@@ -28,6 +28,7 @@ const opened = computed(() => {
   if (route.path.startsWith('/cms')) keys.push('cms')
   if (route.path.startsWith('/org')) keys.push('org')
   if (route.path.startsWith('/rewards')) keys.push('rewards')
+  if (route.path.startsWith('/welfare')) keys.push('welfare')
   if (route.path.startsWith('/settings')) keys.push('settings')
   return keys
 })
