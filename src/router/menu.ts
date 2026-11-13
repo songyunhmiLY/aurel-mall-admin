@@ -39,7 +39,7 @@ export interface AdminMenuItem {
 export const adminMenus: AdminMenuItem[] = [
   {
     key: 'dashboard',
-    title: '首页',
+    title: '运营总览',
     path: paths.dashboard,
     icon: House,
     permission: 'dashboard',

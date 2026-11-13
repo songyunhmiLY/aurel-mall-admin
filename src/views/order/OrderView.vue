@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 
 import { apiErrorMessage } from '@/api/http'
 import { fetchOrders, type AdminOrder, type OrderStatus, type OrderZone } from '@/api/orders'
+import { routeQueryText } from '@/router/query'
 import OrderDetailDrawer from './OrderDetailDrawer.vue'
 import {
   fenText,
@@ -27,8 +29,22 @@ const filters = reactive({
 })
 const detailOpen = ref(false)
 const detailId = ref<string | null>(null)
+const route = useRoute()
 
 onMounted(() => {
+  const zone = routeQueryText(route.query.zone)
+  const status = routeQueryText(route.query.status)
+  const userId = routeQueryText(route.query.userId)
+  if (zone === 'startup' || zone === 'mall') filters.zone = zone
+  if (
+    status === 'pending_payment' ||
+    status === 'paid' ||
+    status === 'shipped' ||
+    status === 'closed'
+  ) {
+    filters.status = status
+  }
+  if (/^\d+$/.test(userId)) filters.userId = userId
   void load()
 })
 

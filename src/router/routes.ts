@@ -22,7 +22,7 @@ export const routes: RouteRecordRaw[] = [
         path: 'dashboard',
         name: 'dashboard',
         component: () => import('@/views/dashboard/DashboardView.vue'),
-        meta: { title: '首页' },
+        meta: { title: '运营总览' },
       },
       {
         path: 'catalog',
