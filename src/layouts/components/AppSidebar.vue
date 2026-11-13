@@ -25,7 +25,7 @@ function filterMenus(items: AdminMenuItem[]): AdminMenuItem[] {
 const menus = computed(() => filterMenus(adminMenus))
 const opened = computed(() => {
   const keys: string[] = []
-  if (route.path.startsWith('/cms')) keys.push('cms')
+  if (route.path.startsWith('/home')) keys.push('home')
   if (route.path.startsWith('/org')) keys.push('org')
   if (route.path.startsWith('/rewards')) keys.push('rewards')
   if (route.path.startsWith('/welfare')) keys.push('welfare')
@@ -59,7 +59,9 @@ const opened = computed(() => {
             <el-icon v-if="item.icon">
               <component :is="item.icon" />
             </el-icon>
-            <span>{{ item.title }}</span>
+            <span :class="{ menu__wrap: item.key === 'home' }" :title="item.title">{{
+              item.title
+            }}</span>
           </template>
           <el-menu-item v-for="child in item.children" :key="child.key" :index="child.path">
             <el-icon v-if="child.icon">
@@ -135,5 +137,18 @@ const opened = computed(() => {
 
 .menu :deep(.el-menu-item.is-active) {
   background: rgb(15 110 98 / 35%);
+}
+
+.menu :deep(.el-sub-menu__title:has(.menu__wrap)) {
+  height: auto;
+  min-height: var(--el-menu-item-height);
+  line-height: 1.35;
+  white-space: normal;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.menu__wrap {
+  white-space: normal;
 }
 </style>
