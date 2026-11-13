@@ -30,6 +30,7 @@ const opened = computed(() => {
   if (route.path.startsWith('/rewards')) keys.push('rewards')
   if (route.path.startsWith('/welfare')) keys.push('welfare')
   if (route.path.startsWith('/cofounder')) keys.push('cofounder')
+  if (route.path.startsWith('/studio')) keys.push('studio')
   if (route.path.startsWith('/settings')) keys.push('settings')
   return keys
 })
