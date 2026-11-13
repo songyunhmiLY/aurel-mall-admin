@@ -48,6 +48,7 @@ export const adminMenus: AdminMenuItem[] = [
     path: paths.order,
     icon: Tickets,
     permission: 'order',
+    placeholder: false,
   },
   {
     key: 'member',
