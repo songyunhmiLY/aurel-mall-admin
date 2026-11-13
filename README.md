@@ -1,6 +1,6 @@
 # 奥瑞尔经销商城 · 管理后台
 
-经销商城管理端前端（`aurel-mall-admin`）。登录后的第一屏是只读的运营总览。另外包含侧栏布局、路由、请求层、商品、会员、订单发货、商城退款、提现审核、组织关系、奖励明细、福利专场、提现分类和微信支付配置。内容、财务总览仍是占位页。
+经销商城管理端前端（`aurel-mall-admin`）。登录后的第一屏是只读的运营总览。另外包含侧栏布局、路由、请求层、商品、会员、订单发货、商城退款、提现审核、组织关系、奖励明细、福利专场、联合创始人、提现分类和微信支付配置。内容、财务总览仍是占位页。
 
 ## 相关仓库
 
@@ -393,6 +393,30 @@ Authorization: Bearer <token>
 
 参与资格列表项：`userId`、`nickname`、`member`、`eligible`、`actualPayFen`、`openedRoundCount`、`claimCapFen`、`cumulativeClaimedFen`、`currentRoundNo`、`currentRoundClaimedFen`、`signedUpToday`。不传 `userId` 时接口只列出会员。指定用户不存在是「会员不存在」。本轮已领额度和当前轮次按接口原样展示：一轮正好领满时，额度仍记在这一轮；已领超过已开额度时，当前轮次可以高于已开轮数。
 
+联合创始人：
+
+```http
+GET /api/v1/admin/cofounder/content
+PUT /api/v1/admin/cofounder/content
+GET /api/v1/admin/cofounder/settings
+PUT /api/v1/admin/cofounder/settings
+GET /api/v1/admin/cofounders?status=&page=&pageSize=
+POST /api/v1/admin/cofounders
+GET /api/v1/admin/cofounders/:userId/cancellation
+POST /api/v1/admin/cofounders/:userId/cancel
+Authorization: Bearer <token>
+```
+
+对齐 `aurel-mall-api` main 上已合并的联合创始人管理接口（PR #10，合并提交 `8ec335e6712f7e9b8388d1bfaf1244fd88be6295`）。页面不计算分红，也不发起退款或钱包划转。失败时展示接口 `message`。编号和带 `Fen` 的金额是十进制字符串，单位分。名额、在籍人数、周期里的日和星期是 JSON 数字。
+
+内容 body 只有 `entryCopy`（最长 500）、`entryImageUrls`、`introTitle`（最长 200）、`introBody`（最长 20000）、`introImageUrls`。图片是字符串数组，最多 20 个，每个地址最长 512。空数组会清空这一组图片。多出来的字段会被接口拒绝。
+
+设置 body 只有 `seatCap`（0 到 1000000）、`userButtonOpen`、`activationAmountFen`、`payoutMode`、`schedule`、`poolThresholdFen`、`perPersonThresholdFen`。`payoutMode` 是 `immediate`、`periodic`、`pool_total`、`per_person` 之一。`schedule` 含 `cycle`（`daily` / `weekly` / `monthly` / `interval`）、`time`（`HH:mm`，Asia/Shanghai）、`weekday`（周一 1 至周日 7）、`monthDay`、`intervalDays`、`anchorDate`。按池子总额时门槛必须大于 0，按人均额度时人均门槛必须大于 0。不提交分红比例。返回里的 `lockedRates.startupDividendRatioBps` 和 `lockedRates.mallDividendRatioBps` 只展示。`enrolledCount` 和 `poolFen` 也只展示。改分配方式或定期周期后，池子由服务端处理，页面没有另一次清池请求。
+
+开通金额为 0 时按接口原样显示。取消身份会把 `userButtonOpen` 写成 false，名额与分配页仍可以再打开。
+
+名单 query 的 `status` 为 `active` 或 `cancelled`，不传则两种都返回。指定 body 是 `{ "userId": "<会员编号>" }`，不收款，名额已满也可以指定。取消审核展示按奖励类型的累计入账、`cofounderDividendFen`、当前可提现余额（含冻结和可用）、已完成提现的笔数、申请金额合计、实付合计和每笔明细。已提现合计和联合创始人分红分开显示。`POST .../cancel` 只取消身份。
+
 运营总览：
 
 ```http
@@ -439,6 +463,7 @@ src/
     org/                  组织：邀请关系、市场关系、报单与公排
     rewards/              奖励：职位分红、奖励明细、会员钱包
     welfare/              福利专场：入口文案和图片、报名记录、参与资格
+    cofounder/            联合创始人：入口与介绍、名额与分配、在籍与取消审核
     cms/                  内容：轮播、资讯、字幕（占位）
     finance/              提现审核；财务总览仍是占位
     settings/             微信支付配置、提现分类显示名
@@ -453,9 +478,9 @@ src/
 - 不建大而全的 `utils.ts`。
 - 不留注释掉的废代码。
 
-侧栏第一项是运营总览，登录后就进这一页。其余是：商品、订单、商城退款、会员、组织（邀请关系 / 市场关系 / 报单公排）、奖励（职位分红 / 奖励明细 / 会员钱包）、福利专场（入口配置 / 报名记录 / 参与资格）、提现审核、内容（轮播 / 资讯 / 字幕）、财务、设置（微信支付、提现分类）。商品、会员、订单、商城退款、提现审核、组织、奖励、福利专场、微信支付和提现分类可用。运营总览只读。内容、财务总览仍写明「待实现」。
+侧栏第一项是运营总览，登录后就进这一页。其余是：商品、订单、商城退款、会员、组织（邀请关系 / 市场关系 / 报单公排）、奖励（职位分红 / 奖励明细 / 会员钱包）、福利专场（入口配置 / 报名记录 / 参与资格）、联合创始人（入口与介绍 / 名额与分配 / 在籍名单）、提现审核、内容（轮播 / 资讯 / 字幕）、财务、设置（微信支付、提现分类）。商品、会员、订单、商城退款、提现审核、组织、奖励、福利专场、联合创始人、微信支付和提现分类可用。运营总览只读。内容、财务总览仍写明「待实现」。
 
-组织页可以沿邀请链和市场树查看，报单页查看全网公排和幸运返还结算。职位分红页可以改次月发放日、停止某会员的自动发放，并为已停止的会员登记手工发放。营销经理门槛 T 只写入下月。奖励明细按订单、层级和收款人查询销售奖与见点奖。会员钱包只查询三个账户、冻结和消费划转。福利专场只配置首页入口文案和图片，并查看报名、参与资格和本轮已领额度。不在这里做联合创始人 / 工作室 / 运营团队身份、内容发布、消息推送、财务总览，也不修改锁定配置（比例、轮次门槛、单轮额度、每日计提、每日报单检查时间等）。页面不发起划转，也不提前执行整期自动发放。运营总览不增加福利专场卡片。
+组织页可以沿邀请链和市场树查看，报单页查看全网公排和幸运返还结算。职位分红页可以改次月发放日、停止某会员的自动发放，并为已停止的会员登记手工发放。营销经理门槛 T 只写入下月。奖励明细按订单、层级和收款人查询销售奖与见点奖。会员钱包只查询三个账户、冻结和消费划转。福利专场只配置首页入口文案和图片，并查看报名、参与资格和本轮已领额度。联合创始人可以配置首页入口和介绍页、名额、用户按钮、微信支付开通金额，以及互斥的四种分配方式和对应参数；可以指定在籍，并在看过取消审核明细后只取消身份。不在这里做工作室 / 运营团队身份、内容发布、消息推送、财务总览，也不修改锁定配置（联合创始人分红比例、轮次门槛、单轮额度、每日计提、每日报单检查时间等）。页面不发起开通退款或钱包划转，也不提前执行整期自动发放，也不另做一次清池。运营总览不增加福利专场或联合创始人卡片；联合创始人开通金额仍用接口里已有的 `cofounderActivationFen`。
 
 ## 权限
 

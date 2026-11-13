@@ -103,6 +103,24 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '参与资格', section: '福利专场' },
       },
       {
+        path: 'cofounder/content',
+        name: 'cofounder-content',
+        component: () => import('@/views/cofounder/ContentView.vue'),
+        meta: { title: '入口与介绍', section: '联合创始人' },
+      },
+      {
+        path: 'cofounder/settings',
+        name: 'cofounder-settings',
+        component: () => import('@/views/cofounder/SettingsView.vue'),
+        meta: { title: '名额与分配', section: '联合创始人' },
+      },
+      {
+        path: 'cofounder/people',
+        name: 'cofounder-people',
+        component: () => import('@/views/cofounder/ListView.vue'),
+        meta: { title: '在籍名单', section: '联合创始人' },
+      },
+      {
         path: 'cms/banners',
         name: 'cms-banners',
         component: () => import('@/views/cms/BannerView.vue'),

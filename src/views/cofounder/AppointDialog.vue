@@ -1,0 +1,75 @@
+<script setup lang="ts">
+import { ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+
+import { appointCofounder } from '@/api/cofounder'
+import { apiErrorMessage } from '@/api/http'
+
+const props = defineProps<{
+  modelValue: boolean
+}>()
+
+const emit = defineEmits<{
+  'update:modelValue': [open: boolean]
+  appointed: []
+}>()
+
+const saving = ref(false)
+const actionError = ref('')
+const userId = ref('')
+
+watch(
+  () => props.modelValue,
+  (open) => {
+    if (!open) return
+    userId.value = ''
+    actionError.value = ''
+  },
+)
+
+function close(): void {
+  emit('update:modelValue', false)
+}
+
+async function submit(): Promise<void> {
+  if (saving.value) return
+  const id = userId.value.trim()
+  if (!/^[1-9]\d{0,18}$/.test(id)) {
+    actionError.value = '会员编号不正确'
+    return
+  }
+  saving.value = true
+  actionError.value = ''
+  try {
+    const enrolled = await appointCofounder(id)
+    ElMessage.success(`已指定${enrolled.nickname ? ` ${enrolled.nickname}` : ''}`)
+    emit('appointed')
+    close()
+  } catch (error) {
+    actionError.value = apiErrorMessage(error, '指定失败')
+  } finally {
+    saving.value = false
+  }
+}
+</script>
+
+<template>
+  <el-dialog
+    :model-value="modelValue"
+    title="指定联合创始人"
+    width="420px"
+    @update:model-value="emit('update:modelValue', $event)"
+  >
+    <p class="ops-hint">指定不收款。名额已满也可以指定。对方必须已经是会员，且当前不在籍。</p>
+    <el-form label-position="top" @submit.prevent="submit">
+      <el-form-item label="会员编号">
+        <el-input v-model="userId" placeholder="用户 ID" clearable @keyup.enter="submit" />
+      </el-form-item>
+      <el-alert v-if="actionError" type="error" :title="actionError" show-icon :closable="false" />
+    </el-form>
+    <template #footer>
+      <el-button :disabled="saving" @click="close">取消</el-button>
+      <el-button type="primary" :loading="saving" @click="submit">指定</el-button>
+    </template>
+  </el-dialog>
+</template>
