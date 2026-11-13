@@ -1,6 +1,6 @@
 # 奥瑞尔经销商城 · 管理后台
 
-经销商城管理端前端（`aurel-mall-admin`）。包含登录、侧栏布局、路由、请求层、商品、会员和微信支付配置。订单、内容、财务仍是占位页。
+经销商城管理端前端（`aurel-mall-admin`）。包含登录、侧栏布局、路由、请求层、商品、会员、订单发货和微信支付配置。内容、财务仍是占位页。
 
 ## 相关仓库
 
@@ -183,6 +183,53 @@ POST /api/v1/admin/users/:id/enable
 
 停用只表示该用户不能登录。没有额外处罚，也没有权限矩阵。只有一种管理员角色。
 
+订单：
+
+```http
+GET /api/v1/admin/orders?zone=&status=&userId=&page=&pageSize=
+GET /api/v1/admin/orders/:id
+POST /api/v1/admin/orders/:id/ship
+Authorization: Bearer <token>
+```
+
+列表 `data` 是 `{ "items", "total", "page", "pageSize" }`，默认每页 20。筛选都可空。`zone` 为 `startup`（创业专区）或 `mall`（会员商城）。`status` 为 `pending_payment`（待支付）、`paid`（已支付）、`shipped`（已发货）、`closed`（已关闭）。`userId` 是用户编号，精确匹配。
+
+详情和列表里的每一项都是订单。编号是十进制字符串。带 `Fen` 的金额是 JSON 数字，单位分。
+
+| 字段 | 含义 |
+| --- | --- |
+| `id` | 订单 ID |
+| `orderNo` | 订单号 |
+| `userId` | 下单用户 ID |
+| `zone` | `startup` 或 `mall` |
+| `status` | `pending_payment` / `paid` / `shipped` / `closed` |
+| `goodsTotalFen` | 商品金额 |
+| `freightFen` | 运费 |
+| `payAmountFen` | 应付，等于商品金额加运费 |
+| `pvFen` | 订单 PV。会员商城为各行之和，创业专区为 0。不是售价 |
+| `pointsFen` | 积分支付金额。未支付时为 0 |
+| `withdrawableFen` | 可提现账户支付金额。未支付时为 0 |
+| `consumptionFen` | 消费账户支付金额。未支付时为 0 |
+| `wechatFen` | 微信支付金额。未支付时为 0 |
+| `shipping` | 下单时的地址快照：`contactName`、`contactPhone`、`province`、`city`、`district`、`detail` |
+| `courierName` | 快递公司。未发货为 `null` |
+| `trackingNumber` | 运单号。未发货为 `null` |
+| `items` | 订单行 |
+| `placedAt` | 下单时间 |
+| `paidAt` | 支付时间，可空 |
+| `shippedAt` | 发货时间，可空 |
+| `closedAt` | 关闭时间，可空 |
+
+订单行：`id`、`skuId`、`productName`、`skuName`、`unitPriceFen`、`unitPvFen`、`unitFreightFen`、`quantity`、`lineTotalFen`、`linePvFen`、`lineFreightFen`。
+
+发货 body 只有这两个字段：
+
+```json
+{ "courierName": "顺丰", "trackingNumber": "SF100" }
+```
+
+只有 `paid` 可以变成 `shipped`。成功后详情里的状态、快递公司和运单号以接口返回为准。重复发货返回 409，`message` 为「订单已发货」。未支付或已关闭返回 409，「只有已支付的订单可以发货」。快递公司或运单号为空、或超过 64 个字，返回 400，「快递公司不正确」或「运单号不正确」。页面展示接口返回的 `message`，不把发货失败当成成功。
+
 ## 脚本
 
 | 命令                 | 作用                      |
@@ -209,7 +256,7 @@ src/
     login/                登录
     dashboard/            首页
     catalog/              商品：列表、新建、编辑、上下架、库存、分类
-    order/                订单（占位）
+    order/                订单：列表、详情、发货
     member/               会员：列表、详情、停用和启用
     cms/                  内容：轮播、资讯、字幕（占位）
     finance/              财务（占位）
@@ -225,7 +272,7 @@ src/
 - 不建大而全的 `utils.ts`。
 - 不留注释掉的废代码。
 
-侧栏目前有：首页、商品、订单、会员、内容（轮播 / 资讯 / 字幕）、财务、设置（微信支付）。商品、会员和微信支付可用。订单、内容、财务仍写明「待实现」。不在本页做发货、退款、提现、消息推送、营销经理门槛、联合创始人、工作室或资金明细。
+侧栏目前有：首页、商品、订单、会员、内容（轮播 / 资讯 / 字幕）、财务、设置（微信支付）。商品、会员、订单和微信支付可用。内容、财务仍写明「待实现」。订单页可以查询并发货。不在这里做退款、提现、转账、报单、奖励结算、市场树、邀请码管理或消息推送。
 
 ## 权限
 
