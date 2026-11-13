@@ -5,6 +5,7 @@ import {
   Connection,
   CreditCard,
   Document,
+  Flag,
   Goods,
   House,
   Key,
@@ -230,6 +231,14 @@ export const adminMenus: AdminMenuItem[] = [
         placeholder: false,
       },
     ],
+  },
+  {
+    key: 'ops-team',
+    title: '运营团队',
+    path: paths.opsTeam,
+    icon: Flag,
+    permission: 'ops-team',
+    placeholder: false,
   },
   {
     key: 'withdrawals',

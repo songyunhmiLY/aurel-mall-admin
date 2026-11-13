@@ -19,6 +19,7 @@ export const paths = {
   cofounderPeople: '/cofounder/people',
   studioPeople: '/studio/people',
   studioSettings: '/studio/settings',
+  opsTeam: '/ops-team',
   withdrawals: '/withdrawals',
   cmsBanners: '/cms/banners',
   cmsArticles: '/cms/articles',
