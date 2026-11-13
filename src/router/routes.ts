@@ -121,6 +121,18 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '在籍名单', section: '联合创始人' },
       },
       {
+        path: 'studio/people',
+        name: 'studio-people',
+        component: () => import('@/views/studio/ListView.vue'),
+        meta: { title: '名单', section: '工作室' },
+      },
+      {
+        path: 'studio/settings',
+        name: 'studio-settings',
+        component: () => import('@/views/studio/SettingsView.vue'),
+        meta: { title: '对外名称', section: '工作室' },
+      },
+      {
         path: 'cms/banners',
         name: 'cms-banners',
         component: () => import('@/views/cms/BannerView.vue'),

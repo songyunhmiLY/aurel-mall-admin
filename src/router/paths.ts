@@ -17,6 +17,8 @@ export const paths = {
   cofounderContent: '/cofounder/content',
   cofounderSettings: '/cofounder/settings',
   cofounderPeople: '/cofounder/people',
+  studioPeople: '/studio/people',
+  studioSettings: '/studio/settings',
   withdrawals: '/withdrawals',
   cmsBanners: '/cms/banners',
   cmsArticles: '/cms/articles',
