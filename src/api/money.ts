@@ -19,8 +19,3 @@ export function parseYuanToFen(input: string): number | null {
   if (!Number.isSafeInteger(fen)) return null
   return fen
 }
-
-/** 分转成 JSON 数字（元）。用于 PV：1 PV = 1 元。 */
-export function fenToUnitNumber(fen: number): number {
-  return Number((fen / 100).toFixed(2))
-}

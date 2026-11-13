@@ -2,12 +2,11 @@
 import { ref, watch } from 'vue'
 
 import { apiErrorMessage } from '@/api/http'
-import { productToWrite, updateProductStock, type Product } from '@/api/products'
+import { updateProductStock, type Product } from '@/api/products'
 
 const props = defineProps<{
   modelValue: boolean
   product: Product | null
-  startupZoneUnitPriceFen: number | null
 }>()
 
 const emit = defineEmits<{
@@ -15,7 +14,7 @@ const emit = defineEmits<{
   saved: []
 }>()
 
-const stock = ref<number | undefined>(0)
+const quantity = ref<number | undefined>(0)
 const saving = ref(false)
 const actionError = ref('')
 
@@ -23,7 +22,7 @@ watch(
   () => [props.modelValue, props.product] as const,
   ([open, product]) => {
     if (!open || !product) return
-    stock.value = product.stock ?? undefined
+    quantity.value = product.stockQuantity
     actionError.value = ''
   },
 )
@@ -35,26 +34,14 @@ function close(): void {
 async function save(): Promise<void> {
   const product = props.product
   if (!product || saving.value) return
-  if (stock.value == null || !Number.isSafeInteger(stock.value) || stock.value < 0) {
+  if (quantity.value == null || !Number.isSafeInteger(quantity.value) || quantity.value < 0) {
     actionError.value = '请填写不小于 0 的整数库存'
     return
   }
-  const priceFen =
-    product.zone === 'startup' && props.startupZoneUnitPriceFen != null
-      ? props.startupZoneUnitPriceFen
-      : product.priceFen
-  const canFallback = product.zone !== 'startup' || priceFen != null
-
   saving.value = true
   actionError.value = ''
   try {
-    const write = canFallback
-      ? productToWrite(product, {
-          stock: stock.value,
-          ...(priceFen == null ? {} : { priceFen }),
-        })
-      : null
-    await updateProductStock(product.id, stock.value, write)
+    await updateProductStock(product.id, quantity.value)
     emit('saved')
     close()
   } catch (error) {
@@ -74,8 +61,8 @@ async function save(): Promise<void> {
     @update:model-value="emit('update:modelValue', $event)"
   >
     <p class="name">{{ product?.name }}</p>
-    <p class="hint">填写调整后的库存数量。</p>
-    <el-input-number v-model="stock" :min="0" :step="1" :precision="0" />
+    <p class="hint">填写调整后的可售数量。</p>
+    <el-input-number v-model="quantity" :min="0" :step="1" :precision="0" />
     <el-alert
       v-if="actionError"
       class="error"

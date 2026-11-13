@@ -1,17 +1,23 @@
-import type { Product, ProductStatus, ProductWrite, ProductZone } from '@/api/products'
-
-import { fenToUnitNumber, fenToYuan, parseYuanToFen } from '@/api/money'
+import type {
+  Product,
+  ProductCreateBody,
+  ProductStatus,
+  ProductUpdateBody,
+  ProductZone,
+} from '@/api/products'
+import { fenToYuan, parseYuanToFen } from '@/api/money'
 
 export interface ProductDraft {
   zone: ProductZone
   name: string
   subtitle: string
+  body: string
   coverUrl: string
   imageUrlsText: string
   status: ProductStatus
   priceYuan: string
   freightYuan: string
-  stock: number | undefined
+  stockQuantity: number | undefined
   pvYuan: string
   categoryId: string
 }
@@ -27,7 +33,7 @@ export const statusOptions: { value: ProductStatus; label: string }[] = [
   { value: 'off', label: '下架' },
 ]
 
-const httpUrl = /^https?:\/\/\S+$/i
+const maxImages = 20
 
 export function zoneLabel(zone: string): string {
   return zoneOptions.find((item) => item.value === zone)?.label ?? (zone || '—')
@@ -48,12 +54,13 @@ export function createDraft(): ProductDraft {
     zone: 'mall',
     name: '',
     subtitle: '',
+    body: '',
     coverUrl: '',
     imageUrlsText: '',
     status: 'draft',
     priceYuan: '',
     freightYuan: '0.00',
-    stock: 0,
+    stockQuantity: 0,
     pvYuan: '',
     categoryId: '',
   }
@@ -69,82 +76,127 @@ export function draftFromProduct(product: Product): ProductDraft {
     zone,
     name: product.name,
     subtitle: product.subtitle,
+    body: product.body,
     coverUrl: product.coverUrl,
     imageUrlsText: product.imageUrls.join('\n'),
     status,
-    priceYuan: product.priceFen == null ? '' : fenToYuan(product.priceFen),
-    freightYuan: product.freightFeeFen == null ? '0.00' : fenToYuan(product.freightFeeFen),
-    stock: product.stock ?? undefined,
+    priceYuan: fenToYuan(product.priceFen),
+    freightYuan: fenToYuan(product.freightFen),
+    stockQuantity: product.stockQuantity,
     pvYuan: product.pvFen == null ? '' : fenToYuan(product.pvFen),
     categoryId: product.categoryId,
   }
 }
 
-export function buildProductWrite(
-  draft: ProductDraft,
-  startupZoneUnitPriceFen: number | null,
-  categoriesEnabled: boolean,
-): ProductWrite {
+export function buildProductCreate(draft: ProductDraft): ProductCreateBody {
+  const shared = readShared(draft)
+  const stockQuantity = draft.stockQuantity
+  if (stockQuantity == null || !Number.isSafeInteger(stockQuantity) || stockQuantity < 0) {
+    throw new Error('请填写不小于 0 的整数库存')
+  }
+  const body: ProductCreateBody = {
+    zone: draft.zone,
+    name: shared.name,
+    subtitle: shared.subtitle,
+    body: shared.body,
+    coverUrl: shared.coverUrl,
+    imageUrls: shared.imageUrls,
+    freightFen: shared.freightFen,
+    stockQuantity,
+    status: draft.status,
+  }
+  if (draft.zone === 'mall') {
+    body.priceFen = readPriceFen(draft.priceYuan)
+    body.pvFen = readPvFen(draft.pvYuan)
+    body.categoryId = categoryIdOf(draft)
+  }
+  return body
+}
+
+export function buildProductUpdate(draft: ProductDraft): ProductUpdateBody {
+  const shared = readShared(draft)
+  const body: ProductUpdateBody = {
+    name: shared.name,
+    subtitle: shared.subtitle,
+    body: shared.body,
+    coverUrl: shared.coverUrl,
+    imageUrls: shared.imageUrls,
+    freightFen: shared.freightFen,
+    status: draft.status,
+  }
+  if (draft.zone === 'mall') {
+    body.priceFen = readPriceFen(draft.priceYuan)
+    body.pvFen = readPvFen(draft.pvYuan)
+    body.categoryId = categoryIdOf(draft)
+  }
+  return body
+}
+
+function categoryIdOf(draft: ProductDraft): string | null {
+  const value: unknown = draft.categoryId
+  const trimmed = typeof value === 'string' ? value.trim() : ''
+  return trimmed || null
+}
+
+function readShared(draft: ProductDraft): {
+  name: string
+  subtitle: string | null
+  body: string | null
+  coverUrl: string | null
+  imageUrls: string[]
+  freightFen: number
+} {
   const name = draft.name.trim()
-  if (!name) throw new Error('请填写商品名称')
-  if (name.length > 128) throw new Error('商品名称不能超过 128 个字')
-
-  const subtitle = draft.subtitle.trim()
-  if (subtitle.length > 255) throw new Error('副标题不能超过 255 个字')
-
+  if (!name || name.length > 128) throw new Error('请填写不超过 128 个字的商品名称')
+  const subtitle = emptyToNull(draft.subtitle.trim(), '副标题', 255)
+  const body = emptyToNull(draft.body.trim(), '详情', 20_000)
   const coverUrl = draft.coverUrl.trim()
-  assertUrl(coverUrl, '封面')
-
+  if (coverUrl) assertUrl(coverUrl, '封面')
   const imageUrls = draft.imageUrlsText
     .split(/\n+/)
     .map((item) => item.trim())
     .filter(Boolean)
-  for (const url of imageUrls) assertUrl(url, '图片')
-
-  if (draft.stock == null || !Number.isSafeInteger(draft.stock) || draft.stock < 0) {
-    throw new Error('请填写不小于 0 的整数库存')
-  }
-
-  const freightFeeFen = parseYuanToFen(draft.freightYuan)
-  if (freightFeeFen == null) throw new Error('运费请填写不小于 0 的金额，最多两位小数')
-
-  let priceFen: number
-  if (draft.zone === 'startup') {
-    if (startupZoneUnitPriceFen == null || startupZoneUnitPriceFen < 0) {
-      throw new Error('还没有读到创业专区锁定单价，暂时不能保存')
-    }
-    priceFen = startupZoneUnitPriceFen
-  } else {
-    const parsed = parseYuanToFen(draft.priceYuan)
-    if (parsed == null) throw new Error('价格请填写不小于 0 的金额，最多两位小数')
-    priceFen = parsed
-  }
-
-  const write: ProductWrite = {
+  if (imageUrls.length > maxImages) throw new Error(`附图最多 ${maxImages} 个`)
+  imageUrls.forEach((url, index) => assertUrl(url, `附图${index + 1}`))
+  const freightFen = parseYuanToFen(draft.freightYuan)
+  if (freightFen == null) throw new Error('运费请填写不小于 0 的金额，最多两位小数')
+  return {
     name,
     subtitle,
-    coverUrl,
+    body,
+    coverUrl: coverUrl || null,
     imageUrls,
-    zone: draft.zone,
-    status: draft.status,
-    priceFen,
-    freightFeeFen,
-    stock: draft.stock,
+    freightFen,
   }
+}
 
-  if (draft.zone === 'mall') {
-    const pvFen = parseYuanToFen(draft.pvYuan)
-    if (pvFen == null) throw new Error('PV 请填写不小于 0 的数值，最多两位小数')
-    write.pv = fenToUnitNumber(pvFen)
-    const categoryId = typeof draft.categoryId === 'string' ? draft.categoryId.trim() : ''
-    if (categoriesEnabled) write.categoryId = categoryId || null
-  }
+function readPriceFen(input: string): number {
+  const fen = parseYuanToFen(input)
+  if (fen == null) throw new Error('价格请填写不小于 0 的金额，最多两位小数')
+  return fen
+}
 
-  return write
+function readPvFen(input: string): number {
+  const fen = parseYuanToFen(input)
+  if (fen == null) throw new Error('PV 请填写不小于 0 的金额，最多两位小数')
+  return fen
+}
+
+function emptyToNull(value: string, label: string, max: number): string | null {
+  if (!value) return null
+  if (value.length > max) throw new Error(`${label}过长`)
+  return value
 }
 
 function assertUrl(value: string, label: string): void {
-  if (!value) return
   if (value.length > 512) throw new Error(`${label}链接过长`)
-  if (!httpUrl.test(value)) throw new Error(`${label}请填写 http 或 https 链接`)
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error(`${label}必须是 http 或 https 链接`)
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`${label}必须是 http 或 https 链接`)
+  }
 }

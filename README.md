@@ -77,7 +77,7 @@ npm run build -- --base=/admin/
 
 ## 已对接的接口
 
-客户端按下面的契约调用。响应包一层 `{ "code": 0, "message": "ok", "data": ... }`，失败时 HTTP 状态与 `code` 相同，`message` 为原因。登录和微信支付已在 `aurel-mall-api` 提供。商品和会员按同一形状对接；若接口路径稍后有小差异，再改客户端。
+客户端按 `aurel-mall-api` 已提供的契约调用。响应包一层 `{ "code": 0, "message": "ok", "data": ... }`，失败时 HTTP 状态与 `code` 相同，`message` 为原因。JSON 里的编号是十进制字符串。
 
 登录：
 
@@ -114,59 +114,72 @@ Authorization: Bearer <token>
 商品：
 
 ```http
-GET /api/v1/admin/products?zone=&status=
-POST /api/v1/admin/products
+GET /api/v1/admin/products?zone=&status=&categoryId=&page=&pageSize=
 GET /api/v1/admin/products/:id
+POST /api/v1/admin/products
 PUT /api/v1/admin/products/:id
-POST /api/v1/admin/products/:id/on
-POST /api/v1/admin/products/:id/off
+POST /api/v1/admin/products/:id/shelf
 PUT /api/v1/admin/products/:id/stock
+GET /api/v1/admin/mall-categories
+POST /api/v1/admin/mall-categories
 ```
 
-`zone` 为 `startup`（创业专区）或 `mall`（会员商城），`status` 为 `draft` / `on` / `off`。列表的 `data` 可以是数组，或 `{ "items": [ ... ], "startupZoneUnitPriceFen": 100000 }`。每个商品只有一个规格。金额在页面上按元显示，提交用分。
+`zone` 为 `startup`（创业专区）或 `mall`（会员商城），`status` 为 `draft` / `on` / `off`。列表和保存以外的详情，`data` 都是商品对象。列表 `data` 是 `{ "items", "total", "page", "pageSize" }`，默认每页 20。创建和更新的 `data` 是 `{ "product", "warnings" }`。`PUT` 不能改专区，也不带库存。
 
-| 字段 | 含义 |
-| --- | --- |
-| `name` | 名称 |
-| `subtitle` | 副标题，可空。读取时也接受 `description` |
-| `coverUrl` | 封面 URL，可空 |
-| `imageUrls` | 图片 URL 数组，可空 |
-| `zone` | `startup` 或 `mall` |
-| `status` | `draft` 草稿、`on` 上架、`off` 下架 |
-| `priceFen` | 价格，单位分 |
-| `freightFeeFen` | 运费，单位分 |
-| `stock` | 库存数量。库存接口的 body 是 `{ "stock": 10 }`，表示改成这个数量 |
-| `pv` | 仅会员商城。数值，1 PV = 1 元，不是售价。创业专区不传 |
-| `categoryId` | 仅当分类接口存在，且专区是会员商城时传递。`null` 表示不选 |
+创建 body：
 
-创业专区不能手填另一个价格。页面展示接口给出的 `startupZoneUnitPriceFen`，保存时把这个分值放进 `priceFen`。列表或商品上没有该字段时，创业专区不能保存。
+| 字段            | 含义                                                            |
+| --------------- | --------------------------------------------------------------- |
+| `zone`          | `startup` 或 `mall`。只在创建时提交                             |
+| `name`          | 名称                                                            |
+| `subtitle`      | 副标题，可空                                                    |
+| `body`          | 详情，可空                                                      |
+| `coverUrl`      | 封面 URL，可空                                                  |
+| `imageUrls`     | 附图 URL 数组，最多 20 个                                       |
+| `freightFen`    | 运费，单位分                                                    |
+| `priceFen`      | 售价，单位分。会员商城必填。创业专区不传，由接口按锁定单价写入  |
+| `pvFen`         | 仅会员商城。单位分，`100` = 1 PV = 1 元，不是售价。创业专区不传 |
+| `categoryId`    | 会员商城分类编号，字符串；`null` 表示不选。创业专区不传         |
+| `stockQuantity` | 创建时的库存。改库存不走这个字段                                |
+| `status`        | `draft` / `on` / `off`。不传时接口默认草稿                      |
 
-PV 大于价格时不拦截保存。成功响应若在 `data.warning`、`data.warnings`、`data.pvWarning`，或包络 `message`（不是 `ok` / `成功` 这类普通成功语）里带了提示，页面会显示出来。
+上下架是 `POST /admin/products/:id/shelf`，body 为 `{ "status": "on" | "off" }`。库存是 `PUT /admin/products/:id/stock`，body 为 `{ "quantity": 10 }`，表示把可售数量改成这个值。
 
-上下架优先 `POST .../on` 和 `POST .../off`。若这两条路由不存在（404 或 405），再 `PUT` 商品并只带 `{ "status": "on" | "off" }`。库存优先 `PUT .../stock`；没有该路由时，用当前商品字段回写 `PUT` 商品。
+创业专区不能手填价格。页面不提交 `priceFen`，保存后展示接口落定的 `priceFen`。会员商城若 PV 大于售价，仍保存，并展示 `warnings`（例如「PV 大于售价」）。若创业专区请求里的售价不是锁定单价，接口仍按锁定单价保存，并在 `warnings` 里说明。
 
-分类是可选的。`GET /api/v1/admin/product-categories` 若返回 404 或 405，页面不显示分类。有该接口时，`data` 为 `{ "id", "name" }` 的数组（或包在 `items` 里），会员商城商品可以选一个分类。这里不做分类的新建和编辑。
+分类：
+
+```http
+GET /api/v1/admin/mall-categories
+POST /api/v1/admin/mall-categories
+```
+
+`GET` 的 `data` 是数组，元素为 `id`、`name`、`sortOrder`、`createdAt`、`updatedAt`。创建 body 为 `{ "name": "分类", "sortOrder": 0 }`。页面只做列表和新建。会员商城商品可以选一个分类。
 
 会员：
 
 ```http
-GET /api/v1/admin/users?id=&nickname=&phone=
+GET /api/v1/admin/users?id=&nickname=&phone=&page=&pageSize=
 GET /api/v1/admin/users/:id
+GET /api/v1/admin/users/:id/kyc
 POST /api/v1/admin/users/:id/disable
 POST /api/v1/admin/users/:id/enable
 ```
 
-列表的 `data` 可以是数组，或 `{ "items": [ ... ] }`。查询参数只在填写了对应输入时才带上。详情在用户对象上带 `kyc`（也可以和 `user` 并列）。页面只展示实名文字：`name`（或 `realName`）、`nationalIdNumber`（或 `idNumber`）、`mobile`。不展示证件照片。
+列表 `data` 是 `{ "items", "total", "page", "pageSize" }`。`id` 精确，`nickname` 包含，`phone` 精确。用户对象不含 `kyc`。实名要再请求 `GET /admin/users/:id/kyc`。
 
-| 字段 | 含义 |
-| --- | --- |
-| `id` | 用户 ID |
-| `nickname` | 昵称 |
-| `phone` | 手机号。没有该字段时，从 `identities` 里 `provider = phone` 的 `identifier` 读取 |
-| `avatarUrl` | 头像 URL，可空 |
-| `status` | `active` 可登录，`disabled` 不能登录 |
-| `member` | 是否会员。也接受 `isMember`。缺省时页面显示「未知」，不当成非会员 |
-| `kyc` | 已提交的实名信息；没有则为 `null` |
+| 字段          | 含义                                 |
+| ------------- | ------------------------------------ |
+| `id`          | 用户 ID                              |
+| `nickname`    | 昵称                                 |
+| `phone`       | 手机号，可空                         |
+| `avatarUrl`   | 头像 URL，可空                       |
+| `inviteCode`  | 邀请码，可空                         |
+| `status`      | `active` 可登录，`disabled` 不能登录 |
+| `member`      | 是否有市场树席位                     |
+| `kycVerified` | 是否已核验实名                       |
+
+实名响应：`verified`、`realName`、`idNumber`、`mobile`。还没提交时 `verified` 为 `false`，文字字段为 `null`。页面只展示这三项文字，不展示证件照片。
 
 停用只表示该用户不能登录。没有额外处罚，也没有权限矩阵。只有一种管理员角色。
 
@@ -195,7 +208,7 @@ src/
   views/                  按业务模块分目录
     login/                登录
     dashboard/            首页
-    catalog/              商品：列表、新建、编辑、上下架、库存
+    catalog/              商品：列表、新建、编辑、上下架、库存、分类
     order/                订单（占位）
     member/               会员：列表、详情、停用和启用
     cms/                  内容：轮播、资讯、字幕（占位）

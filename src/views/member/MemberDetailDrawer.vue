@@ -5,10 +5,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { apiErrorMessage } from '@/api/http'
 import {
   fetchMember,
+  fetchMemberKyc,
   memberFlagLabel,
   memberStatusLabel,
   setMemberEnabled,
-  type MemberDetail,
+  type MemberKyc,
+  type MemberSummary,
 } from '@/api/members'
 
 const props = defineProps<{
@@ -24,13 +26,17 @@ const emit = defineEmits<{
 const loading = ref(false)
 const acting = ref(false)
 const loadError = ref('')
-const detail = ref<MemberDetail | null>(null)
+const detail = ref<MemberSummary | null>(null)
+const kyc = ref<MemberKyc | null>(null)
 
 watch(
   () => [props.modelValue, props.memberId] as const,
   ([open, id]) => {
     if (open && id) void load(id)
-    if (!open) detail.value = null
+    if (!open) {
+      detail.value = null
+      kyc.value = null
+    }
   },
 )
 
@@ -42,9 +48,12 @@ async function load(id: string): Promise<void> {
   loading.value = true
   loadError.value = ''
   try {
-    detail.value = await fetchMember(id)
+    const [user, realName] = await Promise.all([fetchMember(id), fetchMemberKyc(id)])
+    detail.value = user
+    kyc.value = realName
   } catch (error) {
     detail.value = null
+    kyc.value = null
     loadError.value = apiErrorMessage(error, '读取会员失败')
   } finally {
     loading.value = false
@@ -95,9 +104,10 @@ async function toggle(): Promise<void> {
           <el-descriptions-item label="用户 ID">{{ detail.id }}</el-descriptions-item>
           <el-descriptions-item label="昵称">{{ detail.nickname || '—' }}</el-descriptions-item>
           <el-descriptions-item label="手机号">{{ detail.phone || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="是否会员">{{
-            memberFlagLabel(detail.member)
-          }}</el-descriptions-item>
+          <el-descriptions-item label="邀请码">{{ detail.inviteCode || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="是否会员">
+            {{ memberFlagLabel(detail.member) }}
+          </el-descriptions-item>
           <el-descriptions-item label="状态">{{
             memberStatusLabel(detail.status)
           }}</el-descriptions-item>
@@ -105,14 +115,12 @@ async function toggle(): Promise<void> {
 
         <h2>实名信息</h2>
         <p class="hint">只查看已提交的姓名、身份证号和手机号，不展示证件照片。</p>
-        <el-descriptions v-if="detail.kyc" :column="1" border>
-          <el-descriptions-item label="姓名">{{ detail.kyc.name || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="身份证号">{{
-            detail.kyc.nationalIdNumber || '—'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="手机号">{{ detail.kyc.mobile || '—' }}</el-descriptions-item>
+        <el-descriptions v-if="kyc?.verified" :column="1" border>
+          <el-descriptions-item label="姓名">{{ kyc.realName || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="身份证号">{{ kyc.idNumber || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="手机号">{{ kyc.mobile || '—' }}</el-descriptions-item>
         </el-descriptions>
-        <el-empty v-else description="暂无实名信息" :image-size="72" />
+        <el-empty v-else description="尚未提交实名信息" :image-size="72" />
 
         <div class="actions">
           <el-button

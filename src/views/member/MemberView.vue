@@ -5,9 +5,12 @@ import { apiErrorMessage } from '@/api/http'
 import { fetchMembers, memberFlagLabel, memberStatusLabel, type MemberSummary } from '@/api/members'
 import MemberDetailDrawer from './MemberDetailDrawer.vue'
 
+const pageSize = 20
 const loading = ref(false)
 const loadError = ref('')
 const members = ref<MemberSummary[]>([])
+const total = ref(0)
+const page = ref(1)
 const filters = reactive({
   id: '',
   nickname: '',
@@ -24,11 +27,16 @@ async function load(): Promise<void> {
   loading.value = true
   loadError.value = ''
   try {
-    members.value = await fetchMembers({
+    const result = await fetchMembers({
       id: filters.id.trim() || undefined,
       nickname: filters.nickname.trim() || undefined,
       phone: filters.phone.trim() || undefined,
+      page: page.value,
+      pageSize,
     })
+    members.value = result.items
+    total.value = result.total
+    page.value = result.page
   } catch (error) {
     loadError.value = apiErrorMessage(error, '读取会员失败')
   } finally {
@@ -36,10 +44,21 @@ async function load(): Promise<void> {
   }
 }
 
+function search(): void {
+  page.value = 1
+  void load()
+}
+
 function resetFilters(): void {
   filters.id = ''
   filters.nickname = ''
   filters.phone = ''
+  page.value = 1
+  void load()
+}
+
+function onPage(next: number): void {
+  page.value = next
   void load()
 }
 
@@ -60,7 +79,10 @@ function statusTag(status: string): 'success' | 'danger' | 'info' {
     <header class="page__header">
       <h1>会员</h1>
     </header>
-    <p class="hint">可按用户 ID、昵称或手机号查询。停用后该用户不能登录。</p>
+    <p class="hint">
+      可按用户 ID、昵称或手机号查询。昵称按包含匹配，手机号和 ID
+      按完整值匹配。停用后该用户不能登录。
+    </p>
     <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" />
 
     <div class="toolbar">
@@ -69,23 +91,23 @@ function statusTag(status: string): 'success' | 'danger' | 'info' {
         placeholder="用户 ID"
         clearable
         class="filter"
-        @keyup.enter="load"
+        @keyup.enter="search"
       />
       <el-input
         v-model="filters.nickname"
         placeholder="昵称"
         clearable
         class="filter"
-        @keyup.enter="load"
+        @keyup.enter="search"
       />
       <el-input
         v-model="filters.phone"
         placeholder="手机号"
         clearable
         class="filter"
-        @keyup.enter="load"
+        @keyup.enter="search"
       />
-      <el-button type="primary" @click="load">查询</el-button>
+      <el-button type="primary" @click="search">查询</el-button>
       <el-button @click="resetFilters">重置</el-button>
     </div>
 
@@ -105,6 +127,9 @@ function statusTag(status: string): 'success' | 'danger' | 'info' {
       <el-table-column label="是否会员" width="100">
         <template #default="{ row }">{{ memberFlagLabel(row.member) }}</template>
       </el-table-column>
+      <el-table-column label="实名" width="90">
+        <template #default="{ row }">{{ row.kycVerified ? '已核验' : '未提交' }}</template>
+      </el-table-column>
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
           <el-tag size="small" effect="plain" :type="statusTag(row.status)">
@@ -118,6 +143,15 @@ function statusTag(status: string): 'success' | 'danger' | 'info' {
         </template>
       </el-table-column>
     </el-table>
+
+    <el-pagination
+      v-if="total > 0"
+      layout="total, prev, pager, next"
+      :total="total"
+      :page-size="pageSize"
+      :current-page="page"
+      @current-change="onPage"
+    />
 
     <MemberDetailDrawer v-model="detailOpen" :member-id="detailId" @changed="load" />
   </section>

@@ -1,53 +1,71 @@
 import { ApiError, http } from './http'
-import { asRecord, readBoolean, readList, readString } from './json'
+import { asRecord, readId, readNullableString, readPage, readString } from './json'
 
 export interface MemberSummary {
   id: string
-  nickname: string
-  phone: string
-  avatarUrl: string
   status: string
-  /** 接口没说明时为 null，页面显示「未知」。 */
-  member: boolean | null
+  nickname: string
+  avatarUrl: string
+  phone: string
+  inviteCode: string
+  member: boolean
+  kycVerified: boolean
+  createdAt: string
+  updatedAt: string
 }
 
+export interface MemberPage {
+  items: MemberSummary[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+/** GET /admin/users/:id/kyc。还没提交时 verified 为 false，文字字段为空。 */
 export interface MemberKyc {
-  name: string
-  nationalIdNumber: string
+  verified: boolean
+  realName: string
+  idNumber: string
   mobile: string
-}
-
-export interface MemberDetail extends MemberSummary {
-  kyc: MemberKyc | null
 }
 
 export interface MemberQuery {
   id?: string
   nickname?: string
   phone?: string
+  page: number
+  pageSize: number
 }
 
 const usersPath = '/admin/users'
 
-export async function fetchMembers(query: MemberQuery = {}): Promise<MemberSummary[]> {
-  const params: Record<string, string> = {}
+export async function fetchMembers(query: MemberQuery): Promise<MemberPage> {
+  const params: Record<string, string> = {
+    page: String(query.page),
+    pageSize: String(query.pageSize),
+  }
   if (query.id) params.id = query.id
   if (query.nickname) params.nickname = query.nickname
   if (query.phone) params.phone = query.phone
   const { data } = await http.get<unknown>(usersPath, { params })
-  return normalizeMemberList(data)
+  const page = readPage(data, '会员')
+  return { ...page, items: page.items.map((item) => readMember(item)) }
 }
 
-export async function fetchMember(id: string): Promise<MemberDetail> {
+export async function fetchMember(id: string): Promise<MemberSummary> {
   const { data } = await http.get<unknown>(`${usersPath}/${encodeURIComponent(id)}`)
-  const detail = normalizeMemberDetail(data)
-  if (!detail.id) throw new ApiError('会员响应无效', 500)
-  return detail
+  return readMember(data)
 }
 
-export async function setMemberEnabled(id: string, enabled: boolean): Promise<void> {
+export async function fetchMemberKyc(id: string): Promise<MemberKyc> {
+  const { data } = await http.get<unknown>(`${usersPath}/${encodeURIComponent(id)}/kyc`)
+  return readKyc(data)
+}
+
+export async function setMemberEnabled(id: string, enabled: boolean): Promise<MemberSummary> {
   const action = enabled ? 'enable' : 'disable'
-  await http.post(`${usersPath}/${encodeURIComponent(id)}/${action}`)
+  const { data } = await http.post<unknown>(`${usersPath}/${encodeURIComponent(id)}/${action}`)
+  return readMember(data)
 }
 
 export function memberStatusLabel(status: string): string {
@@ -56,77 +74,42 @@ export function memberStatusLabel(status: string): string {
   return status || '未知'
 }
 
-export function memberFlagLabel(member: boolean | null): string {
-  if (member === true) return '会员'
-  if (member === false) return '非会员'
-  return '未知'
+export function memberFlagLabel(member: boolean): string {
+  return member ? '会员' : '非会员'
 }
 
-export function normalizeMemberList(data: unknown): MemberSummary[] {
-  const raw = readList(data, ['items', 'list', 'users', 'records'])
-  const rows = raw.length > 0 ? raw : singleMember(data)
-  return rows.map((item) => normalizeMember(item)).filter((item) => item.id)
-}
-
-export function normalizeMemberDetail(data: unknown): MemberDetail {
-  const record = unwrapMember(data)
-  const summary = normalizeMember(record)
-  return { ...summary, kyc: readKyc(record) }
-}
-
-function singleMember(data: unknown): unknown[] {
+function readMember(data: unknown): MemberSummary {
   const record = asRecord(data)
-  if (!record) return []
-  if (record.id == null && record.user == null) return []
-  return [data]
-}
-
-function unwrapMember(data: unknown): Record<string, unknown> {
-  const record = asRecord(data) ?? {}
-  const user = asRecord(record.user)
-  if (!user) return record
-  if (user.kyc == null && record.kyc != null) return { ...user, kyc: record.kyc }
-  return user
-}
-
-function normalizeMember(data: unknown): MemberSummary {
-  const record = unwrapMember(data)
+  const id = readId(record?.id)
+  if (
+    !record ||
+    !id ||
+    typeof record.member !== 'boolean' ||
+    typeof record.kycVerified !== 'boolean'
+  ) {
+    throw new ApiError('会员响应无效', 500)
+  }
   return {
-    id: readString(record, ['id']),
-    nickname: readString(record, ['nickname', 'name']),
-    phone: readPhone(record),
-    avatarUrl: readString(record, ['avatarUrl', 'avatar']),
-    status: readString(record, ['status']),
-    member: readMemberFlag(record),
+    id,
+    status: readString(record.status),
+    nickname: readString(record.nickname),
+    avatarUrl: readNullableString(record.avatarUrl),
+    phone: readNullableString(record.phone),
+    inviteCode: readNullableString(record.inviteCode),
+    member: record.member,
+    kycVerified: record.kycVerified,
+    createdAt: readString(record.createdAt),
+    updatedAt: readString(record.updatedAt),
   }
 }
 
-function readMemberFlag(record: Record<string, unknown>): boolean | null {
-  const direct = readBoolean(record.member) ?? readBoolean(record.isMember)
-  if (direct != null) return direct
-  return null
-}
-
-function readPhone(record: Record<string, unknown>): string {
-  const direct = readString(record, ['phone', 'mobile'])
-  if (direct) return direct
-  const identities = record.identities ?? record.userIdentities
-  if (!Array.isArray(identities)) return ''
-  for (const item of identities) {
-    const row = asRecord(item)
-    if (!row || row.provider !== 'phone') continue
-    const identifier = readString(row, ['identifier'])
-    if (identifier) return identifier
+function readKyc(data: unknown): MemberKyc {
+  const record = asRecord(data)
+  if (!record || typeof record.verified !== 'boolean') throw new ApiError('实名响应无效', 500)
+  return {
+    verified: record.verified,
+    realName: readNullableString(record.realName),
+    idNumber: readNullableString(record.idNumber),
+    mobile: readNullableString(record.mobile),
   }
-  return ''
-}
-
-function readKyc(record: Record<string, unknown>): MemberKyc | null {
-  const source = asRecord(record.kyc)
-  if (!source) return null
-  const name = readString(source, ['name', 'realName'])
-  const nationalIdNumber = readString(source, ['nationalIdNumber', 'idNumber', 'idCardNo', 'idNo'])
-  const mobile = readString(source, ['mobile', 'phone'])
-  if (!name && !nationalIdNumber && !mobile) return null
-  return { name, nationalIdNumber, mobile }
 }

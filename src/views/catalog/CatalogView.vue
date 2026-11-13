@@ -1,27 +1,29 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { apiErrorMessage } from '@/api/http'
 import { fenToYuan } from '@/api/money'
 import {
-  fetchProductCategories,
+  fetchMallCategories,
   fetchProducts,
   setProductShelf,
+  type MallCategory,
   type Product,
-  type ProductCategory,
 } from '@/api/products'
+import CategoryDialog from './CategoryDialog.vue'
 import ProductFormDialog from './ProductFormDialog.vue'
 import StockDialog from './StockDialog.vue'
 import { statusLabel, statusTagType, zoneLabel } from './product-form'
 
+const pageSize = 20
 const loading = ref(false)
 const loadError = ref('')
-const categoryError = ref('')
 const notice = ref('')
 const products = ref<Product[]>([])
-const categories = ref<ProductCategory[] | null>(null)
-const startupZoneUnitPriceFen = ref<number | null>(null)
+const total = ref(0)
+const page = ref(1)
+const categories = ref<MallCategory[]>([])
 const zone = ref('')
 const status = ref('')
 
@@ -29,16 +31,7 @@ const editorOpen = ref(false)
 const editingId = ref<string | null>(null)
 const stockOpen = ref(false)
 const stockTarget = ref<Product | null>(null)
-
-const startupPriceText = computed(() =>
-  startupZoneUnitPriceFen.value == null
-    ? '接口未返回'
-    : `${fenToYuan(startupZoneUnitPriceFen.value)} 元`,
-)
-const showCategoryColumn = computed(
-  () =>
-    categories.value != null || products.value.some((item) => item.categoryName || item.categoryId),
-)
+const categoryOpen = ref(false)
 
 onMounted(() => {
   void load()
@@ -47,23 +40,20 @@ onMounted(() => {
 async function load(): Promise<void> {
   loading.value = true
   loadError.value = ''
-  categoryError.value = ''
   try {
-    const [list, categoryResult] = await Promise.all([
+    const [list, categoryList] = await Promise.all([
       fetchProducts({
         zone: zone.value || undefined,
         status: status.value || undefined,
+        page: page.value,
+        pageSize,
       }),
-      fetchProductCategories().catch((error: unknown) => {
-        categoryError.value = apiErrorMessage(error, '读取分类失败')
-        return categories.value
-      }),
+      fetchMallCategories(),
     ])
     products.value = list.items
-    if (list.startupZoneUnitPriceFen != null) {
-      startupZoneUnitPriceFen.value = list.startupZoneUnitPriceFen
-    }
-    categories.value = categoryResult
+    total.value = list.total
+    page.value = list.page
+    categories.value = categoryList
   } catch (error) {
     loadError.value = apiErrorMessage(error, '读取商品失败')
   } finally {
@@ -71,9 +61,20 @@ async function load(): Promise<void> {
   }
 }
 
+function search(): void {
+  page.value = 1
+  void load()
+}
+
 function resetFilters(): void {
   zone.value = ''
   status.value = ''
+  page.value = 1
+  void load()
+}
+
+function onPage(next: number): void {
+  page.value = next
   void load()
 }
 
@@ -92,9 +93,9 @@ function openStock(row: Product): void {
   stockOpen.value = true
 }
 
-function onSaved(warning: string): void {
-  notice.value = warning
-  if (warning) ElMessage.warning('已保存，请查看接口提示')
+function onSaved(warnings: string[]): void {
+  notice.value = warnings.join('；')
+  if (warnings.length > 0) ElMessage.warning('已保存，请查看接口提示')
   else ElMessage.success('已保存')
   void load()
 }
@@ -102,6 +103,14 @@ function onSaved(warning: string): void {
 function onStockSaved(): void {
   ElMessage.success('库存已更新')
   void load()
+}
+
+async function onCategoryCreated(): Promise<void> {
+  try {
+    categories.value = await fetchMallCategories()
+  } catch (error) {
+    loadError.value = apiErrorMessage(error, '读取分类失败')
+  }
 }
 
 async function toggleShelf(row: Product): Promise<void> {
@@ -126,22 +135,16 @@ async function toggleShelf(row: Product): Promise<void> {
 }
 
 function priceText(row: Product): string {
-  return row.priceFen == null ? '—' : `${fenToYuan(row.priceFen)} 元`
+  return `${fenToYuan(row.priceFen)} 元`
 }
 
 function freightText(row: Product): string {
-  return row.freightFeeFen == null ? '—' : `${fenToYuan(row.freightFeeFen)} 元`
+  return `${fenToYuan(row.freightFen)} 元`
 }
 
 function pvText(row: Product): string {
-  if (row.zone !== 'mall') return '—'
-  return row.pvFen == null ? '—' : fenToYuan(row.pvFen)
-}
-
-function categoryText(row: Product): string {
-  if (row.categoryName) return row.categoryName
-  const matched = categories.value?.find((item) => item.id === row.categoryId)
-  return matched?.name || '—'
+  if (row.zone !== 'mall' || row.pvFen == null) return '—'
+  return fenToYuan(row.pvFen)
 }
 </script>
 
@@ -151,17 +154,10 @@ function categoryText(row: Product): string {
       <h1>商品</h1>
     </header>
     <p class="hint">
-      每个商品只有一个规格。创业专区锁定单价：{{ startupPriceText }}。会员商城的 PV 与售价分开，1 PV
-      = 1 元。
+      每个商品只有一个规格。创业专区售价由系统锁定，不能在这里填写。会员商城的 PV 按分保存，1 PV = 1
+      元，与售价分开。
     </p>
     <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" />
-    <el-alert
-      v-if="categoryError"
-      type="warning"
-      :title="categoryError"
-      show-icon
-      :closable="false"
-    />
     <el-alert v-if="notice" type="warning" :title="notice" show-icon @close="notice = ''" />
 
     <div class="toolbar">
@@ -174,8 +170,9 @@ function categoryText(row: Product): string {
         <el-option label="上架" value="on" />
         <el-option label="下架" value="off" />
       </el-select>
-      <el-button @click="load">查询</el-button>
+      <el-button @click="search">查询</el-button>
       <el-button @click="resetFilters">重置</el-button>
+      <el-button @click="categoryOpen = true">分类</el-button>
       <el-button type="primary" class="create" @click="openCreate">新建商品</el-button>
     </div>
 
@@ -187,7 +184,6 @@ function categoryText(row: Product): string {
             <div>
               <div class="product__name">{{ row.name }}</div>
               <div v-if="row.subtitle" class="product__sub">{{ row.subtitle }}</div>
-              <div v-if="row.warning" class="product__warn">{{ row.warning }}</div>
             </div>
           </div>
         </template>
@@ -212,10 +208,10 @@ function categoryText(row: Product): string {
         <template #default="{ row }">{{ freightText(row) }}</template>
       </el-table-column>
       <el-table-column label="库存" width="80">
-        <template #default="{ row }">{{ row.stock ?? '—' }}</template>
+        <template #default="{ row }">{{ row.stockQuantity }}</template>
       </el-table-column>
-      <el-table-column v-if="showCategoryColumn" label="分类" min-width="120">
-        <template #default="{ row }">{{ categoryText(row) }}</template>
+      <el-table-column label="分类" min-width="120">
+        <template #default="{ row }">{{ row.categoryName || '—' }}</template>
       </el-table-column>
       <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
@@ -228,19 +224,23 @@ function categoryText(row: Product): string {
       </el-table-column>
     </el-table>
 
+    <el-pagination
+      v-if="total > 0"
+      layout="total, prev, pager, next"
+      :total="total"
+      :page-size="pageSize"
+      :current-page="page"
+      @current-change="onPage"
+    />
+
     <ProductFormDialog
       v-model="editorOpen"
       :product-id="editingId"
-      :startup-zone-unit-price-fen="startupZoneUnitPriceFen"
       :categories="categories"
       @saved="onSaved"
     />
-    <StockDialog
-      v-model="stockOpen"
-      :product="stockTarget"
-      :startup-zone-unit-price-fen="startupZoneUnitPriceFen"
-      @saved="onStockSaved"
-    />
+    <StockDialog v-model="stockOpen" :product="stockTarget" @saved="onStockSaved" />
+    <CategoryDialog v-model="categoryOpen" :categories="categories" @created="onCategoryCreated" />
   </section>
 </template>
 
@@ -297,14 +297,9 @@ function categoryText(row: Product): string {
   font-weight: 600;
 }
 
-.product__sub,
-.product__warn {
+.product__sub {
   color: var(--aurel-muted);
   font-size: 12px;
-}
-
-.product__warn {
-  color: var(--el-color-warning);
 }
 
 @media (max-width: 720px) {
