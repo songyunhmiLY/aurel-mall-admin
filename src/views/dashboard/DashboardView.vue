@@ -45,7 +45,7 @@ const modules = leaves(adminMenus).filter((item) => permission.canAccess(item.pe
       <p>
         欢迎回来，{{
           username
-        }}。商品、订单和会员可以管理，微信支付在「设置」里保存。内容、财务仍待实现。
+        }}。商品、订单、商城退款、会员和提现审核可以处理。提现分类和微信支付在「设置」里。内容、财务总览仍待实现。
       </p>
     </header>
     <ul class="modules">

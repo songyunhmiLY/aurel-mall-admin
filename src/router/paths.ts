@@ -3,10 +3,13 @@ export const paths = {
   dashboard: '/dashboard',
   catalog: '/catalog',
   order: '/order',
+  orderRefunds: '/order/refunds',
   member: '/member',
+  withdrawals: '/withdrawals',
   cmsBanners: '/cms/banners',
   cmsArticles: '/cms/articles',
   cmsSubtitles: '/cms/subtitles',
   finance: '/finance',
   settingsWechatPay: '/settings/wechat-pay',
+  settingsWithdrawalNames: '/settings/withdrawal-display-names',
 } as const

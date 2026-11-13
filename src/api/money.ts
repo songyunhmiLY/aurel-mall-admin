@@ -1,3 +1,22 @@
+/** 把十进制分（可为超出安全整数的字符串）格式化成元。无法解析时返回空字符串。 */
+export function formatDecimalFen(fen: string): string {
+  const text = fen.trim()
+  if (!/^-?\d+$/.test(text)) return ''
+  const negative = text.startsWith('-')
+  const digits = (negative ? text.slice(1) : text).replace(/^0+(?=\d)/, '')
+  const padded = digits.padStart(3, '0')
+  const yuan = padded.slice(0, -2)
+  const cents = padded.slice(-2)
+  const sign = negative && digits !== '0' ? '-' : ''
+  return `${sign}${yuan}.${cents}`
+}
+
+export function decimalFenText(fen: string | null): string {
+  if (!fen) return '—'
+  const yuan = formatDecimalFen(fen)
+  return yuan ? `${yuan} 元` : '—'
+}
+
 /** 把分格式化成元，保留两位小数。 */
 export function fenToYuan(fen: number): string {
   const negative = fen < 0
