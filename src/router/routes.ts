@@ -133,6 +133,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '对外名称', section: '工作室' },
       },
       {
+        path: 'ops-team',
+        name: 'ops-team',
+        component: () => import('@/views/ops-team/HolderView.vue'),
+        meta: { title: '运营团队' },
+      },
+      {
         path: 'cms/banners',
         name: 'cms-banners',
         component: () => import('@/views/cms/BannerView.vue'),
