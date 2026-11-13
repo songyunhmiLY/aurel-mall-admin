@@ -175,6 +175,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '微信支付', section: '设置' },
       },
       {
+        path: 'settings/notifications',
+        name: 'settings-notifications',
+        component: () => import('@/views/settings/NotificationsView.vue'),
+        meta: { title: '消息推送', section: '设置' },
+      },
+      {
         path: 'settings/withdrawal-display-names',
         name: 'settings-withdrawal-display-names',
         component: () => import('@/views/settings/WithdrawalDisplayNamesView.vue'),

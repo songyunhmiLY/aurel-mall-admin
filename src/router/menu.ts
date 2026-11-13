@@ -1,5 +1,6 @@
 import type { Component } from 'vue'
 import {
+  Bell,
   ChatLineSquare,
   Coin,
   Connection,
@@ -296,6 +297,14 @@ export const adminMenus: AdminMenuItem[] = [
         path: paths.settingsWechatPay,
         icon: Key,
         permission: 'settings.wechat-pay',
+        placeholder: false,
+      },
+      {
+        key: 'settings-notifications',
+        title: '消息推送',
+        path: paths.settingsNotifications,
+        icon: Bell,
+        permission: 'settings.notifications',
         placeholder: false,
       },
       {

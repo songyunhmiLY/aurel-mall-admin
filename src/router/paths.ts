@@ -26,5 +26,6 @@ export const paths = {
   homeTickers: '/home/tickers',
   finance: '/finance',
   settingsWechatPay: '/settings/wechat-pay',
+  settingsNotifications: '/settings/notifications',
   settingsWithdrawalNames: '/settings/withdrawal-display-names',
 } as const
