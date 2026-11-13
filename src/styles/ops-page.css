@@ -1,0 +1,71 @@
+.ops-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 360px;
+  padding: 20px 24px;
+  background: var(--aurel-surface);
+  border: 1px solid var(--aurel-line);
+  border-radius: 12px;
+}
+
+.ops-page h1 {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.ops-page h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.ops-hint {
+  color: var(--aurel-muted);
+}
+
+.ops-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.ops-filter {
+  width: 180px;
+}
+
+.ops-filter--narrow {
+  width: 140px;
+}
+
+.ops-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.ops-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--aurel-line);
+  border-radius: 10px;
+}
+
+.ops-chain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  align-items: center;
+}
+
+.ops-chain__sep {
+  margin: 0 4px;
+  color: var(--aurel-muted);
+}
+
+.ops-meta {
+  color: var(--aurel-muted);
+  font-size: 13px;
+}

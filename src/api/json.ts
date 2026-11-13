@@ -24,6 +24,10 @@ export function readInteger(value: unknown): number | null {
   return null
 }
 
+export function readBoolean(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null
+}
+
 /**
  * 钱包金额是十进制字符串，单位分。JSON 数字也接受。
  * 无法解析时返回 null。

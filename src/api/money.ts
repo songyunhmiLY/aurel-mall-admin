@@ -26,6 +26,15 @@ export function fenToYuan(fen: number): string {
   return `${negative ? '-' : ''}${yuan}.${cents.toString().padStart(2, '0')}`
 }
 
+/** 把元输入转成十进制分字符串。只接受非负、最多两位小数。 */
+export function yuanInputToFenString(input: string): string | null {
+  const trimmed = input.trim()
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null
+  const [whole, fraction = ''] = trimmed.split('.')
+  const digits = `${whole}${fraction.padEnd(2, '0')}`.replace(/^0+(?=\d)/, '')
+  return digits || '0'
+}
+
 /**
  * 把元输入转成分。只接受非负、最多两位小数。
  * 无法解析时返回 null。
