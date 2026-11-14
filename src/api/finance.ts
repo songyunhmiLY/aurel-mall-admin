@@ -166,6 +166,58 @@ export async function fetchCompensations(query: {
   }
 }
 
+export interface SkuSalesRow {
+  skuId: string
+  productName: string
+  skuName: string
+  quantity: number
+  salesAmountFen: string
+  pendingQuantity: number
+  pendingAmountFen: string
+  shippedQuantity: number
+  shippedAmountFen: string
+  costAmountFen: string
+  profitFen: string
+}
+
+export interface SkuSalesPage {
+  range: { from: string; to: string }
+  zone?: string
+  rows: SkuSalesRow[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+export async function fetchSkuSales(query: FinanceQuery & {
+  zone?: string
+  page: number
+  pageSize: number
+}): Promise<SkuSalesPage> {
+  const { data } = await http.get<unknown>('/admin/finance/sku-sales', { params: query })
+  const record = requireRecord(data, '单品销售汇总')
+  return {
+    range: readRange(record.range),
+    ...(record.zone == null ? {} : { zone: readString(record.zone) }),
+    rows: readArray(record.rows).map((item) => ({
+      skuId: readString(item.skuId),
+      productName: readString(item.productName),
+      skuName: readString(item.skuName),
+      quantity: readInteger(item.quantity) ?? 0,
+      salesAmountFen: readDecimalFen(item.salesAmountFen) ?? '0',
+      pendingQuantity: readInteger(item.pendingQuantity) ?? 0,
+      pendingAmountFen: readDecimalFen(item.pendingAmountFen) ?? '0',
+      shippedQuantity: readInteger(item.shippedQuantity) ?? 0,
+      shippedAmountFen: readDecimalFen(item.shippedAmountFen) ?? '0',
+      costAmountFen: readDecimalFen(item.costAmountFen) ?? '0',
+      profitFen: readDecimalFen(item.profitFen) ?? '0',
+    })),
+    total: readInteger(record.total) ?? 0,
+    page: readInteger(record.page) ?? 1,
+    pageSize: readInteger(record.pageSize) ?? 20,
+  }
+}
+
 export async function retryCompensation(id: string, subsidize: boolean): Promise<unknown> {
   const { data } = await http.post<unknown>(`/admin/finance/settlement-compensations/${id}/retry`, {
     subsidize,

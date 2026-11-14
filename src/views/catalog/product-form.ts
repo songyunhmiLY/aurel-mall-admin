@@ -16,7 +16,8 @@ export interface ProductDraft {
   imageUrlsText: string
   status: ProductStatus
   priceYuan: string
-  freightYuan: string
+  /** 成本价（元，含运费）。留空表示未录入，利润按 0 计。 */
+  costYuan: string
   stockQuantity: number | undefined
   pvYuan: string
   categoryId: string
@@ -59,7 +60,7 @@ export function createDraft(): ProductDraft {
     imageUrlsText: '',
     status: 'draft',
     priceYuan: '',
-    freightYuan: '0.00',
+    costYuan: '',
     stockQuantity: 0,
     pvYuan: '',
     categoryId: '',
@@ -81,7 +82,7 @@ export function draftFromProduct(product: Product): ProductDraft {
     imageUrlsText: product.imageUrls.join('\n'),
     status,
     priceYuan: fenToYuan(product.priceFen),
-    freightYuan: fenToYuan(product.freightFen),
+    costYuan: product.costFen == null ? '' : fenToYuan(product.costFen),
     stockQuantity: product.stockQuantity,
     pvYuan: product.pvFen == null ? '' : fenToYuan(product.pvFen),
     categoryId: product.categoryId,
@@ -101,7 +102,9 @@ export function buildProductCreate(draft: ProductDraft): ProductCreateBody {
     body: shared.body,
     coverUrl: shared.coverUrl,
     imageUrls: shared.imageUrls,
-    freightFen: shared.freightFen,
+    // 运费并入售价与成本，不再单独体现
+    freightFen: 0,
+    costFen: readCostFen(draft.costYuan),
     stockQuantity,
     status: draft.status,
   }
@@ -121,7 +124,9 @@ export function buildProductUpdate(draft: ProductDraft): ProductUpdateBody {
     body: shared.body,
     coverUrl: shared.coverUrl,
     imageUrls: shared.imageUrls,
-    freightFen: shared.freightFen,
+    // 运费并入售价与成本，不再单独体现
+    freightFen: 0,
+    costFen: readCostFen(draft.costYuan),
     status: draft.status,
   }
   if (draft.zone === 'mall') {
@@ -144,7 +149,6 @@ function readShared(draft: ProductDraft): {
   body: string | null
   coverUrl: string | null
   imageUrls: string[]
-  freightFen: number
 } {
   const name = draft.name.trim()
   if (!name || name.length > 128) throw new Error('请填写不超过 128 个字的商品名称')
@@ -158,16 +162,22 @@ function readShared(draft: ProductDraft): {
     .filter(Boolean)
   if (imageUrls.length > maxImages) throw new Error(`附图最多 ${maxImages} 个`)
   imageUrls.forEach((url, index) => assertUrl(url, `附图${index + 1}`))
-  const freightFen = parseYuanToFen(draft.freightYuan)
-  if (freightFen == null) throw new Error('运费请填写不小于 0 的金额，最多两位小数')
   return {
     name,
     subtitle,
     body,
     coverUrl: coverUrl || null,
     imageUrls,
-    freightFen,
   }
+}
+
+/** 成本价留空表示未录入；填了必须是不小于 0 的金额。 */
+function readCostFen(input: string): number | null {
+  const trimmed = input.trim()
+  if (!trimmed) return null
+  const fen = parseYuanToFen(trimmed)
+  if (fen == null) throw new Error('成本价请填写不小于 0 的金额，最多两位小数')
+  return fen
 }
 
 function readPriceFen(input: string): number {

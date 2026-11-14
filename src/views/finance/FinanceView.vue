@@ -7,6 +7,7 @@ import {
   fetchCompensations,
   fetchOverview,
   fetchReconciliation,
+  fetchSkuSales,
   refundCompensation,
   retryCompensation,
   type CashLedgerEntry,
@@ -15,11 +16,12 @@ import {
   type FinanceOverview,
   type Reconciliation,
   type SettlementCompensation,
+  type SkuSalesPage,
 } from '@/api/finance'
 import { apiErrorMessage } from '@/api/http'
 import { formatDecimalFen } from '@/api/money'
 
-type TabKey = 'overview' | 'ledger' | 'reconcile' | 'compensation'
+type TabKey = 'overview' | 'ledger' | 'reconcile' | 'compensation' | 'sku-sales'
 
 const activeTab = ref<TabKey>('overview')
 const range = ref<[string, string] | null>(null)
@@ -42,6 +44,10 @@ const reconcileLoading = ref(false)
 const compensations = ref<CompensationPage | null>(null)
 const compensationLoading = ref(false)
 const compensationQuery = reactive({ status: '', page: 1, pageSize: 20 })
+
+const skuSales = ref<SkuSalesPage | null>(null)
+const skuSalesLoading = ref(false)
+const skuSalesQuery = reactive({ zone: '', page: 1, pageSize: 20 })
 
 const REASON_LABELS: Record<string, string> = {
   stock_insufficient: '库存不足',
@@ -180,6 +186,67 @@ async function loadCompensations(): Promise<void> {
   }
 }
 
+async function loadSkuSales(): Promise<void> {
+  skuSalesLoading.value = true
+  try {
+    skuSales.value = await fetchSkuSales({
+      ...dateParams.value,
+      zone: skuSalesQuery.zone || undefined,
+      page: skuSalesQuery.page,
+      pageSize: skuSalesQuery.pageSize,
+    })
+  } catch (error) {
+    ElMessage.error(apiErrorMessage(error, '单品销售汇总加载失败'))
+  } finally {
+    skuSalesLoading.value = false
+  }
+}
+
+/** 前端拼 CSV（带 BOM，Excel 直接打开不乱码）。 */
+function exportSkuSalesCsv(): void {
+  const rows = skuSales.value?.rows ?? []
+  if (!rows.length) {
+    ElMessage.info('当前区间没有可导出的数据')
+    return
+  }
+  const header = [
+    '商品',
+    '规格',
+    '销量',
+    '销售金额(元)',
+    '待发货件数',
+    '待发货金额(元)',
+    '已发货件数',
+    '已发货金额(元)',
+    '成本合计(元)',
+    '毛利(元)',
+  ]
+  const lines = rows.map((row) =>
+    [
+      row.productName,
+      row.skuName,
+      row.quantity,
+      yuan(row.salesAmountFen),
+      row.pendingQuantity,
+      yuan(row.pendingAmountFen),
+      row.shippedQuantity,
+      yuan(row.shippedAmountFen),
+      yuan(row.costAmountFen),
+      yuan(row.profitFen),
+    ]
+      .map((cell) => `"${String(cell).replaceAll('"', '""')}"`)
+      .join(','),
+  )
+  const csv = `\uFEFF${header.join(',')}\n${lines.join('\n')}`
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `单品销售汇总_${dateParams.value.from ?? ''}_${dateParams.value.to ?? ''}.csv`
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
 async function onRetry(row: SettlementCompensation, subsidize: boolean): Promise<void> {
   const confirmText = subsidize
     ? `按订单拆分份额由平台补足钱包差额后继续结算订单 ${row.orderNo}？`
@@ -222,13 +289,30 @@ function reload(): void {
   if (activeTab.value === 'ledger') void loadLedger()
   if (activeTab.value === 'reconcile') void loadReconciliation()
   if (activeTab.value === 'compensation') void loadCompensations()
+  if (activeTab.value === 'sku-sales') void loadSkuSales()
 }
 
 watch(activeTab, reload)
 watch(range, () => {
   ledgerQuery.page = 1
+  skuSalesQuery.page = 1
   reload()
 })
+
+watch(
+  () => skuSalesQuery.zone,
+  () => {
+    skuSalesQuery.page = 1
+    if (activeTab.value === 'sku-sales') void loadSkuSales()
+  },
+)
+
+watch(
+  () => skuSalesQuery.page,
+  () => {
+    if (activeTab.value === 'sku-sales') void loadSkuSales()
+  },
+)
 
 watch(
   () => compensationQuery.status,
@@ -586,6 +670,66 @@ onMounted(() => {
             v-model:current-page="compensationQuery.page"
             :page-size="compensationQuery.pageSize"
             :total="compensations?.total ?? 0"
+            layout="prev, pager, next"
+            class="finance__pager"
+          />
+        </div>
+      </el-tab-pane>
+
+      <el-tab-pane label="单品销售汇总" name="sku-sales">
+        <div class="finance__pane">
+          <p class="ops-hint">
+            按时间段汇总每个单品的销售数量与金额，按订单状态拆出待发货（已支付未发货）与已发货。
+            成本按下单时的成本快照（含运费）合计；未录成本的商品按 0 计，毛利即销售金额。
+          </p>
+          <div class="ops-toolbar">
+            <el-select v-model="skuSalesQuery.zone" class="ops-filter" placeholder="专区">
+              <el-option label="全部专区" value="" />
+              <el-option label="创业专区" value="startup" />
+              <el-option label="会员商城" value="mall" />
+            </el-select>
+            <span class="ops-meta">共 {{ skuSales?.total ?? 0 }} 个单品</span>
+            <el-button :disabled="!(skuSales?.rows ?? []).length" @click="exportSkuSalesCsv">
+              导出 CSV
+            </el-button>
+          </div>
+
+          <el-table v-loading="skuSalesLoading" :data="skuSales?.rows ?? []" size="small">
+            <el-table-column label="商品" min-width="150">
+              <template #default="{ row }">{{ row.productName }}</template>
+            </el-table-column>
+            <el-table-column label="销量" width="80" align="center">
+              <template #default="{ row }">{{ row.quantity }}</template>
+            </el-table-column>
+            <el-table-column label="销售金额" align="right" width="120">
+              <template #default="{ row }">{{ yuan(row.salesAmountFen) }} 元</template>
+            </el-table-column>
+            <el-table-column label="待发货" align="right" width="150">
+              <template #default="{ row }">
+                {{ row.pendingQuantity }} 件 / {{ yuan(row.pendingAmountFen) }} 元
+              </template>
+            </el-table-column>
+            <el-table-column label="已发货" align="right" width="150">
+              <template #default="{ row }">
+                {{ row.shippedQuantity }} 件 / {{ yuan(row.shippedAmountFen) }} 元
+              </template>
+            </el-table-column>
+            <el-table-column label="成本合计" align="right" width="120">
+              <template #default="{ row }">{{ yuan(row.costAmountFen) }} 元</template>
+            </el-table-column>
+            <el-table-column label="毛利" align="right" width="120">
+              <template #default="{ row }">{{ yuan(row.profitFen) }} 元</template>
+            </el-table-column>
+            <template #empty>
+              <el-empty description="该区间没有已支付/已发货的订单" />
+            </template>
+          </el-table>
+
+          <el-pagination
+            v-if="(skuSales?.total ?? 0) > skuSalesQuery.pageSize"
+            v-model:current-page="skuSalesQuery.page"
+            :page-size="skuSalesQuery.pageSize"
+            :total="skuSales?.total ?? 0"
             layout="prev, pager, next"
             class="finance__pager"
           />

@@ -43,3 +43,7 @@ __screenshots__/
 
 # Vite
 *.timestamp-*-*.mjs
+
+# Local build backups, never commit
+dist.bak
+dist.bak2

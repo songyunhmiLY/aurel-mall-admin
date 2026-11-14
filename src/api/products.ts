@@ -22,6 +22,8 @@ export interface Product {
   priceFen: number
   /** 会员商城为分。1 PV = 1 元 = 100。创业专区为 null。 */
   pvFen: number | null
+  /** 含运费的进货成本（分），可空。未设置按 0 计。 */
+  costFen: number | null
   stockQuantity: number
   status: string
   skuId: string
@@ -41,7 +43,7 @@ export interface ProductSaveResult {
   warnings: string[]
 }
 
-/** 与 CreateProductDto 一致。创业专区不传 priceFen、pvFen、categoryId。 */
+/** 与 CreateProductDto 一致。创业专区不传 priceFen、pvFen、categoryId。运费并入售价，固定 0。 */
 export interface ProductCreateBody {
   zone: ProductZone
   name: string
@@ -52,12 +54,13 @@ export interface ProductCreateBody {
   freightFen: number
   priceFen?: number
   pvFen?: number
+  costFen?: number | null
   categoryId?: string | null
   stockQuantity: number
   status: ProductStatus
 }
 
-/** 与 UpdateProductDto 一致。不能带 zone，也不能带库存。 */
+/** 与 UpdateProductDto 一致。不能带 zone，也不能带库存。运费并入售价，固定 0。 */
 export interface ProductUpdateBody {
   name: string
   subtitle: string | null
@@ -67,6 +70,7 @@ export interface ProductUpdateBody {
   freightFen: number
   priceFen?: number
   pvFen?: number
+  costFen?: number | null
   categoryId?: string | null
   status: ProductStatus
 }
@@ -149,6 +153,7 @@ export function readProduct(data: unknown): Product {
   const category = asRecord(record.category)
   const pvFen = record.pvFen == null ? null : readInteger(record.pvFen)
   if (record.pvFen != null && pvFen == null) throw new ApiError('商品响应无效', 500)
+  const costFen = record.costFen == null ? null : readInteger(record.costFen)
   return {
     id,
     zone: readString(record.zone),
@@ -160,6 +165,7 @@ export function readProduct(data: unknown): Product {
     freightFen,
     priceFen,
     pvFen,
+    costFen,
     stockQuantity,
     status: readString(record.status),
     skuId: readId(record.skuId),
