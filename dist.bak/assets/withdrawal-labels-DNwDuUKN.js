@@ -1,1 +1,0 @@
-var e=[{value:`pending`,label:`待处理`},{value:`rejected`,label:`已驳回`},{value:`paid`,label:`已打款`}];function t(t){return e.find(e=>e.value===t)?.label??(t||`—`)}function n(e){return e===`paid`?`success`:e===`pending`?`warning`:e===`rejected`?`danger`:`info`}function r(e){return e===`paid`?`已打款`:e===`rejected`?`已驳回`:e||`—`}export{n as i,t as n,e as r,r as t};
