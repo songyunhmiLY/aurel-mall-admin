@@ -1,0 +1,1 @@
+function e(e){return typeof e==`string`?e.trim():Array.isArray(e)&&typeof e[0]==`string`?e[0].trim():``}export{e as t};

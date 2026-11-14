@@ -3,6 +3,7 @@ import { ref } from 'vue'
 
 import AppHeader from './components/AppHeader.vue'
 import AppSidebar from './components/AppSidebar.vue'
+import SectionTabs from './components/SectionTabs.vue'
 
 const collapsed = ref(false)
 </script>
@@ -16,6 +17,7 @@ const collapsed = ref(false)
       <el-header class="shell__header" height="56px">
         <AppHeader :collapsed="collapsed" @toggle="collapsed = !collapsed" />
       </el-header>
+      <SectionTabs />
       <el-main class="shell__body">
         <router-view />
       </el-main>

@@ -1,0 +1,1 @@
+import{I as e,d as t,v as n}from"./runtime-core.esm-bundler-CW3Uw_PD.js";import{t as r}from"./PlaceholderPage-ylESL_3c.js";var i=n({__name:`NotFoundView`,setup(n){return(n,i)=>(e(),t(r))}});export{i as default};

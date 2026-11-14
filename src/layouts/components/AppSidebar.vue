@@ -3,7 +3,12 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { usePermissionStore } from '@/stores/permission'
-import { adminMenus, type AdminMenuItem } from '@/router/menu'
+import {
+  adminSections,
+  findSectionByPath,
+  type AdminMenuSection,
+  type AdminMenuTab,
+} from '@/router/menu'
 
 defineProps<{
   collapsed: boolean
@@ -12,27 +17,41 @@ defineProps<{
 const route = useRoute()
 const permission = usePermissionStore()
 
-function filterMenus(items: AdminMenuItem[]): AdminMenuItem[] {
-  return items
-    .filter((item) => permission.canAccess(item.permission))
-    .map((item) => ({
-      ...item,
-      children: item.children ? filterMenus(item.children) : undefined,
-    }))
-    .filter((item) => Boolean(item.path) || (item.children?.length ?? 0) > 0)
+interface VisibleSection {
+  key: string
+  title: string
+  icon: AdminMenuSection['icon']
+  landing: string
 }
 
-const menus = computed(() => filterMenus(adminMenus))
-const opened = computed(() => {
-  const keys: string[] = []
-  if (route.path.startsWith('/home')) keys.push('home')
-  if (route.path.startsWith('/org')) keys.push('org')
-  if (route.path.startsWith('/rewards')) keys.push('rewards')
-  if (route.path.startsWith('/welfare')) keys.push('welfare')
-  if (route.path.startsWith('/cofounder')) keys.push('cofounder')
-  if (route.path.startsWith('/studio')) keys.push('studio')
-  if (route.path.startsWith('/settings')) keys.push('settings')
-  return keys
+function accessibleTabs(section: AdminMenuSection): AdminMenuTab[] {
+  return section.tabs.filter((tab) => permission.canAccess(tab.permission))
+}
+
+const sections = computed<VisibleSection[]>(() =>
+  adminSections.flatMap((section) => {
+    if (!permission.canAccess(section.permission)) {
+      return []
+    }
+    const tabs = accessibleTabs(section)
+    const landing = tabs[0]?.path
+    if (!landing) {
+      return []
+    }
+    return [{ key: section.key, title: section.title, icon: section.icon, landing }]
+  }),
+)
+
+const activePath = computed(() => {
+  const section = findSectionByPath(route.path)
+  if (!section) {
+    return route.path
+  }
+  const tabs = accessibleTabs(section)
+  const current = tabs
+    .filter((tab) => route.path === tab.path || route.path.startsWith(`${tab.path}/`))
+    .sort((left, right) => right.path.length - left.path.length)[0]
+  return current?.path ?? tabs[0]?.path ?? route.path
 })
 </script>
 
@@ -45,38 +64,11 @@ const opened = computed(() => {
         <small>经销商城</small>
       </span>
     </div>
-    <el-menu
-      :key="opened.join(',')"
-      class="menu"
-      :collapse="collapsed"
-      :default-active="route.path"
-      :default-openeds="opened"
-      router
-    >
-      <template v-for="item in menus" :key="item.key">
-        <el-sub-menu v-if="item.children?.length" :index="item.key">
-          <template #title>
-            <el-icon v-if="item.icon">
-              <component :is="item.icon" />
-            </el-icon>
-            <span :class="{ menu__wrap: item.key === 'home' }" :title="item.title">{{
-              item.title
-            }}</span>
-          </template>
-          <el-menu-item v-for="child in item.children" :key="child.key" :index="child.path">
-            <el-icon v-if="child.icon">
-              <component :is="child.icon" />
-            </el-icon>
-            <span>{{ child.title }}</span>
-          </el-menu-item>
-        </el-sub-menu>
-        <el-menu-item v-else :index="item.path">
-          <el-icon v-if="item.icon">
-            <component :is="item.icon" />
-          </el-icon>
-          <template #title>{{ item.title }}</template>
-        </el-menu-item>
-      </template>
+    <el-menu class="menu" :collapse="collapsed" :default-active="activePath" router>
+      <el-menu-item v-for="item in sections" :key="item.key" :index="item.landing">
+        <el-icon><component :is="item.icon" /></el-icon>
+        <template #title>{{ item.title }}</template>
+      </el-menu-item>
     </el-menu>
   </div>
 </template>
@@ -131,24 +123,8 @@ const opened = computed(() => {
   --el-menu-hover-text-color: #fff;
 }
 
-.menu :deep(.el-menu) {
-  background: transparent;
-}
-
 .menu :deep(.el-menu-item.is-active) {
   background: rgb(15 110 98 / 35%);
-}
-
-.menu :deep(.el-sub-menu__title:has(.menu__wrap)) {
-  height: auto;
-  min-height: var(--el-menu-item-height);
-  line-height: 1.35;
-  white-space: normal;
-  padding-top: 8px;
-  padding-bottom: 8px;
-}
-
-.menu__wrap {
-  white-space: normal;
+  box-shadow: inset 3px 0 0 var(--aurel-accent);
 }
 </style>
