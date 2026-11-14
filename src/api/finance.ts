@@ -106,6 +106,80 @@ export async function fetchReconciliation(query: FinanceQuery): Promise<Reconcil
   }
 }
 
+export interface SettlementCompensation {
+  id: string
+  orderId: string
+  orderNo: string
+  userId: string
+  zone: string
+  payNo: string
+  wechatTradeNo: string | null
+  amountFen: string
+  failReason: string
+  status: string
+  retryCount: number
+  lastError: string | null
+  lastTriedAt: string | null
+  completedAt: string | null
+  refundedAt: string | null
+  createdAt: string
+}
+
+export interface CompensationPage {
+  items: SettlementCompensation[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+export async function fetchCompensations(query: {
+  status?: string
+  page: number
+  pageSize: number
+}): Promise<CompensationPage> {
+  const { data } = await http.get<unknown>('/admin/finance/settlement-compensations', {
+    params: query,
+  })
+  const record = requireRecord(data, '结算补偿列表')
+  return {
+    items: readArray(record.items).map((item) => ({
+      id: readString(item.id),
+      orderId: readString(item.orderId),
+      orderNo: readString(item.orderNo),
+      userId: readString(item.userId),
+      zone: readString(item.zone),
+      payNo: readString(item.payNo),
+      wechatTradeNo: item.wechatTradeNo == null ? null : readString(item.wechatTradeNo),
+      amountFen: readDecimalFen(item.amountFen) ?? '0',
+      failReason: readString(item.failReason),
+      status: readString(item.status),
+      retryCount: readInteger(item.retryCount) ?? 0,
+      lastError: item.lastError == null ? null : readString(item.lastError),
+      lastTriedAt: item.lastTriedAt == null ? null : readString(item.lastTriedAt),
+      completedAt: item.completedAt == null ? null : readString(item.completedAt),
+      refundedAt: item.refundedAt == null ? null : readString(item.refundedAt),
+      createdAt: readString(item.createdAt),
+    })),
+    total: readInteger(record.total) ?? 0,
+    page: readInteger(record.page) ?? 1,
+    pageSize: readInteger(record.pageSize) ?? 20,
+  }
+}
+
+export async function retryCompensation(id: string, subsidize: boolean): Promise<unknown> {
+  const { data } = await http.post<unknown>(`/admin/finance/settlement-compensations/${id}/retry`, {
+    subsidize,
+  })
+  return data
+}
+
+export async function refundCompensation(id: string): Promise<unknown> {
+  const { data } = await http.post<unknown>(
+    `/admin/finance/settlement-compensations/${id}/refund`,
+  )
+  return data
+}
+
 function requireRecord(value: unknown, label: string): Record<string, unknown> {
   const record = asRecord(value)
   if (!record) {

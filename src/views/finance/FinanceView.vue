@@ -1,20 +1,25 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 import {
   fetchCashLedger,
+  fetchCompensations,
   fetchOverview,
   fetchReconciliation,
+  refundCompensation,
+  retryCompensation,
   type CashLedgerEntry,
   type CashLedgerPage,
+  type CompensationPage,
   type FinanceOverview,
   type Reconciliation,
+  type SettlementCompensation,
 } from '@/api/finance'
 import { apiErrorMessage } from '@/api/http'
 import { formatDecimalFen } from '@/api/money'
 
-type TabKey = 'overview' | 'ledger' | 'reconcile'
+type TabKey = 'overview' | 'ledger' | 'reconcile' | 'compensation'
 
 const activeTab = ref<TabKey>('overview')
 const range = ref<[string, string] | null>(null)
@@ -33,6 +38,52 @@ const ledgerQuery = reactive({
 
 const reconciliation = ref<Reconciliation | null>(null)
 const reconcileLoading = ref(false)
+
+const compensations = ref<CompensationPage | null>(null)
+const compensationLoading = ref(false)
+const compensationQuery = reactive({ status: '', page: 1, pageSize: 20 })
+
+const REASON_LABELS: Record<string, string> = {
+  stock_insufficient: '库存不足',
+  order_cancelled: '订单已被取消',
+  seat_failure: '入座失败',
+  wallet_shortfall: '钱包份额不足',
+  transient: '临时故障',
+}
+
+const COMP_STATUS_LABELS: Record<string, string> = {
+  auto_retry: '自动重试中',
+  awaiting_operation: '待人工处理',
+  completed: '已完成',
+  refunded: '已转退款',
+}
+
+function reasonLabel(code: string): string {
+  return REASON_LABELS[code] ?? code
+}
+
+function compStatusLabel(code: string): string {
+  return COMP_STATUS_LABELS[code] ?? code
+}
+
+function compStatusTag(code: string): 'warning' | 'primary' | 'success' | 'danger' {
+  if (code === 'awaiting_operation') return 'warning'
+  if (code === 'completed') return 'success'
+  if (code === 'refunded') return 'danger'
+  return 'primary'
+}
+
+/** 每行给操作员的待办提示。库存不足不自动触发，补货后回这里点按钮。 */
+function compHint(row: SettlementCompensation): string {
+  if (row.status === 'completed') return '订单已按原样完成结算'
+  if (row.status === 'refunded') return '微信实收已原路退回，冻结份额已解冻'
+  if (row.failReason === 'stock_insufficient')
+    return '请先在商品管理补足库存，再点「继续结算」'
+  if (row.failReason === 'wallet_shortfall')
+    return '钱包份额不足：可点「补差后结算」由平台补足差额，或转退款'
+  if (row.failReason === 'order_cancelled') return '订单被超时取消，重试时会自动复活并完成'
+  return '系统会自动重试，无需操作'
+}
 
 const dateParams = computed(() => {
   const value = range.value
@@ -114,10 +165,63 @@ async function loadReconciliation(): Promise<void> {
   }
 }
 
+async function loadCompensations(): Promise<void> {
+  compensationLoading.value = true
+  try {
+    compensations.value = await fetchCompensations({
+      status: compensationQuery.status || undefined,
+      page: compensationQuery.page,
+      pageSize: compensationQuery.pageSize,
+    })
+  } catch (error) {
+    ElMessage.error(apiErrorMessage(error, '结算补偿加载失败'))
+  } finally {
+    compensationLoading.value = false
+  }
+}
+
+async function onRetry(row: SettlementCompensation, subsidize: boolean): Promise<void> {
+  const confirmText = subsidize
+    ? `按订单拆分份额由平台补足钱包差额后继续结算订单 ${row.orderNo}？`
+    : `继续结算订单 ${row.orderNo}？请确认库存已补足。`
+  try {
+    await ElMessageBox.confirm(confirmText, '继续结算', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await retryCompensation(row.id, subsidize)
+    ElMessage.success('已执行，结果见状态列')
+  } catch (error) {
+    ElMessage.error(apiErrorMessage(error, '继续结算失败'))
+  }
+  void loadCompensations()
+}
+
+async function onRefund(row: SettlementCompensation): Promise<void> {
+  try {
+    await ElMessageBox.confirm(
+      `将订单 ${row.orderNo} 的微信实收 ${yuan(row.amountFen)} 元原路退回，钱包冻结份额解冻。此操作不可撤销，确定转退款？`,
+      '转退款',
+      { type: 'warning', confirmButtonText: '确认转退款' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await refundCompensation(row.id)
+    ElMessage.success('已转退款')
+  } catch (error) {
+    ElMessage.error(apiErrorMessage(error, '转退款失败'))
+  }
+  void loadCompensations()
+}
+
 function reload(): void {
   if (activeTab.value === 'overview') void loadOverview()
   if (activeTab.value === 'ledger') void loadLedger()
   if (activeTab.value === 'reconcile') void loadReconciliation()
+  if (activeTab.value === 'compensation') void loadCompensations()
 }
 
 watch(activeTab, reload)
@@ -125,6 +229,21 @@ watch(range, () => {
   ledgerQuery.page = 1
   reload()
 })
+
+watch(
+  () => compensationQuery.status,
+  () => {
+    compensationQuery.page = 1
+    if (activeTab.value === 'compensation') void loadCompensations()
+  },
+)
+
+watch(
+  () => compensationQuery.page,
+  () => {
+    if (activeTab.value === 'compensation') void loadCompensations()
+  },
+)
 
 watch(
   () => [ledgerQuery.direction, ledgerQuery.bizType],
@@ -361,6 +480,117 @@ onMounted(() => {
           </template>
         </div>
       </el-tab-pane>
+
+      <el-tab-pane label="结算补偿" name="compensation">
+        <div class="finance__pane">
+          <p class="ops-hint">
+            微信已扣款但本地结算失败（库存不足、订单被取消、环境故障等）的订单在这里兜底。
+            原则：优先继续完成订单，退款只是最后手段。补货请到商品管理操作，这里不会自动改库存。
+          </p>
+          <div class="ops-toolbar">
+            <el-select
+              v-model="compensationQuery.status"
+              class="ops-filter"
+              placeholder="状态"
+            >
+              <el-option label="全部状态" value="" />
+              <el-option
+                v-for="(label, code) in COMP_STATUS_LABELS"
+                :key="code"
+                :label="label"
+                :value="code"
+              />
+            </el-select>
+            <span class="ops-meta">共 {{ compensations?.total ?? 0 }} 条</span>
+          </div>
+
+          <el-table v-loading="compensationLoading" :data="compensations?.items ?? []" size="small">
+            <el-table-column label="订单号" min-width="150">
+              <template #default="{ row }">
+                <span class="finance__mono">{{ row.orderNo || `#${row.orderId}` }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="专区" width="90">
+              <template #default="{ row }">
+                {{ row.zone === 'startup' ? '创业专区' : '会员商城' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="微信实收" align="right" width="120">
+              <template #default="{ row }">{{ yuan(row.amountFen) }} 元</template>
+            </el-table-column>
+            <el-table-column label="失败原因" width="110">
+              <template #default="{ row }">
+                <el-tag size="small" type="warning" effect="plain">
+                  {{ reasonLabel(row.failReason) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="110">
+              <template #default="{ row }">
+                <el-tag size="small" :type="compStatusTag(row.status)">
+                  {{ compStatusLabel(row.status) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="重试" width="70" align="center">
+              <template #default="{ row }">{{ row.retryCount }}</template>
+            </el-table-column>
+            <el-table-column label="待办提示" min-width="200">
+              <template #default="{ row }">
+                <span class="ops-meta">{{ compHint(row) }}</span>
+                <div v-if="row.lastError" class="finance__mono finance__error">
+                  {{ row.lastError }}
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="最后尝试" width="170">
+              <template #default="{ row }">{{ timeText(row.lastTriedAt ?? '') }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="220" fixed="right">
+              <template #default="{ row }">
+                <template v-if="row.status === 'awaiting_operation'">
+                  <el-button size="small" type="primary" plain @click="onRetry(row, false)">
+                    继续结算
+                  </el-button>
+                  <el-button size="small" type="warning" plain @click="onRetry(row, true)">
+                    补差后结算
+                  </el-button>
+                </template>
+                <el-button
+                  v-else-if="row.status === 'auto_retry'"
+                  size="small"
+                  type="primary"
+                  plain
+                  @click="onRetry(row, false)"
+                >
+                  立即重试
+                </el-button>
+                <el-button
+                  v-if="row.status === 'auto_retry' || row.status === 'awaiting_operation'"
+                  size="small"
+                  type="danger"
+                  plain
+                  @click="onRefund(row)"
+                >
+                  转退款
+                </el-button>
+              </template>
+            </el-table-column>
+            <template #empty>
+              <el-empty description="没有待处理的结算补偿" />
+            </template>
+          </el-table>
+
+          <el-pagination
+            v-if="(compensations?.total ?? 0) > compensationQuery.pageSize"
+            v-model:current-page="compensationQuery.page"
+            :page-size="compensationQuery.pageSize"
+            :total="compensations?.total ?? 0"
+            layout="prev, pager, next"
+            class="finance__pager"
+          />
+        </div>
+      </el-tab-pane>
     </el-tabs>
   </section>
 </template>
@@ -468,5 +698,11 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.finance__error {
+  margin-top: 4px;
+  color: #c4563a;
+  word-break: break-all;
 }
 </style>
