@@ -28,4 +28,6 @@ export const paths = {
   settingsWechatPay: '/settings/wechat-pay',
   settingsNotifications: '/settings/notifications',
   settingsWithdrawalNames: '/settings/withdrawal-display-names',
+  // 时间仿真台：不出现在菜单，只在开发模式（VITE_SIMULATION_ENABLED=true）注册路由。
+  simulation: '/simulation',
 } as const

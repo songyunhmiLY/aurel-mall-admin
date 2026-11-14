@@ -2,18 +2,12 @@ import type { RouteRecordRaw } from 'vue-router'
 
 import { paths } from './paths'
 
-export const routes: RouteRecordRaw[] = [
-  {
-    path: paths.login,
-    name: 'login',
-    component: () => import('@/views/login/LoginView.vue'),
-    meta: { title: '登录' },
-  },
-  {
-    path: '/',
-    component: () => import('@/layouts/AdminLayout.vue'),
-    meta: { requiresAuth: true },
-    children: [
+// 时间仿真台只在开发模式下通过直链访问：
+// 必须是 dev 构建（import.meta.env.DEV）且显式设置 VITE_SIMULATION_ENABLED=true。
+// 生产构建即使误设该变量也不会注册路由，访问 /simulation 会落到「页面不存在」。
+const simulationEnabled = import.meta.env.DEV && import.meta.env.VITE_SIMULATION_ENABLED === 'true'
+
+const adminChildren: RouteRecordRaw[] = [
       {
         path: '',
         redirect: paths.dashboard,
@@ -192,6 +186,29 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/views/error/NotFoundView.vue'),
         meta: { title: '页面不存在' },
       },
-    ],
+]
+
+if (simulationEnabled) {
+  // 插在 404 通配之前。不进菜单（menu.ts 不包含本项）。
+  adminChildren.splice(adminChildren.length - 1, 0, {
+    path: 'simulation',
+    name: 'simulation',
+    component: () => import('@/views/simulation/SimulationView.vue'),
+    meta: { title: '时间仿真' },
+  })
+}
+
+export const routes: RouteRecordRaw[] = [
+  {
+    path: paths.login,
+    name: 'login',
+    component: () => import('@/views/login/LoginView.vue'),
+    meta: { title: '登录' },
+  },
+  {
+    path: '/',
+    component: () => import('@/layouts/AdminLayout.vue'),
+    meta: { requiresAuth: true },
+    children: adminChildren,
   },
 ]
