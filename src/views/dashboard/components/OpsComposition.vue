@@ -5,7 +5,7 @@ import type { OpsCashComposition, OpsZoneComposition } from '@/api/ops-overview'
 import type { OrderZone } from '@/api/orders'
 
 import { moneyText } from '../ops-format'
-import { orderList, refundList, withdrawalList } from '../ops-links'
+import { orderList, withdrawalList } from '../ops-links'
 
 const props = defineProps<{
   startup: OpsZoneComposition
@@ -89,7 +89,7 @@ const zones = computed(() => {
       </li>
       <li>
         <span>微信实退</span>
-        <router-link :to="refundList()">{{ moneyText(cash.wechatCashRefundedFen) }}</router-link>
+        <span>{{ moneyText(cash.wechatCashRefundedFen) }}</span>
       </li>
       <li>
         <span>微信净额</span>

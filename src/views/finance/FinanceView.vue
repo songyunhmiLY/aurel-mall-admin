@@ -8,9 +8,7 @@ import {
   fetchOverview,
   fetchReconciliation,
   fetchSkuSales,
-  refundCompensation,
   retryCompensation,
-  type CashLedgerEntry,
   type CashLedgerPage,
   type CompensationPage,
   type FinanceOverview,
@@ -61,7 +59,7 @@ const COMP_STATUS_LABELS: Record<string, string> = {
   auto_retry: '自动重试中',
   awaiting_operation: '待人工处理',
   completed: '已完成',
-  refunded: '已转退款',
+  refunded: '已退款（历史）',
 }
 
 function reasonLabel(code: string): string {
@@ -86,7 +84,7 @@ function compHint(row: SettlementCompensation): string {
   if (row.failReason === 'stock_insufficient')
     return '请先在商品管理补足库存，再点「继续结算」'
   if (row.failReason === 'wallet_shortfall')
-    return '钱包份额不足：可点「补差后结算」由平台补足差额，或转退款'
+    return '钱包份额不足：可点「补差后结算」由平台补足差额'
   if (row.failReason === 'order_cancelled') return '订单被超时取消，重试时会自动复活并完成'
   return '系统会自动重试，无需操作'
 }
@@ -261,25 +259,6 @@ async function onRetry(row: SettlementCompensation, subsidize: boolean): Promise
     ElMessage.success('已执行，结果见状态列')
   } catch (error) {
     ElMessage.error(apiErrorMessage(error, '继续结算失败'))
-  }
-  void loadCompensations()
-}
-
-async function onRefund(row: SettlementCompensation): Promise<void> {
-  try {
-    await ElMessageBox.confirm(
-      `将订单 ${row.orderNo} 的微信实收 ${yuan(row.amountFen)} 元原路退回，钱包冻结份额解冻。此操作不可撤销，确定转退款？`,
-      '转退款',
-      { type: 'warning', confirmButtonText: '确认转退款' },
-    )
-  } catch {
-    return
-  }
-  try {
-    await refundCompensation(row.id)
-    ElMessage.success('已转退款')
-  } catch (error) {
-    ElMessage.error(apiErrorMessage(error, '转退款失败'))
   }
   void loadCompensations()
 }
@@ -569,7 +548,7 @@ onMounted(() => {
         <div class="finance__pane">
           <p class="ops-hint">
             微信已扣款但本地结算失败（库存不足、订单被取消、环境故障等）的订单在这里兜底。
-            原则：优先继续完成订单，退款只是最后手段。补货请到商品管理操作，这里不会自动改库存。
+            原则：只做「继续完成订单」，退款已整体下线。补货请到商品管理操作，这里不会自动改库存。
           </p>
           <div class="ops-toolbar">
             <el-select
@@ -648,15 +627,6 @@ onMounted(() => {
                   @click="onRetry(row, false)"
                 >
                   立即重试
-                </el-button>
-                <el-button
-                  v-if="row.status === 'auto_retry' || row.status === 'awaiting_operation'"
-                  size="small"
-                  type="danger"
-                  plain
-                  @click="onRefund(row)"
-                >
-                  转退款
                 </el-button>
               </template>
             </el-table-column>

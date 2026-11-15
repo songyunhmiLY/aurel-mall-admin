@@ -96,11 +96,17 @@ function onReviewed(next: AdminRefund): void {
 <template>
   <section class="page">
     <header class="page__header">
-      <h1>商城退款</h1>
+      <h1>商城退款（历史）</h1>
     </header>
+    <el-alert
+      type="info"
+      show-icon
+      :closable="false"
+      title="退款功能已下线"
+      description="会员商城不再支持退货退款，小程序端已无退款入口。本页不在菜单中，仅用于按直链查看历史申请记录，不能审核。"
+    />
     <p class="hint">
-      可按状态和用户 ID
-      筛选。只处理会员商城退款，创业专区订单不能退款。运费和其他应扣费用不会自动计入减扣，可以少于整单退款。审核时只填退款金额或减扣金额中的一项，另一项按应付（含运费）在页面上预览，提交时也只发送所填的那一项。重复处理会提示「退款申请已处理」。两项都填或都不填会提示「请只填写退款金额或减扣金额」。
+      可按状态和用户 ID 筛选历史记录。此前的规则是只处理会员商城退款、创业专区订单不能退款；运费与其他应扣费用不会自动计入减扣，退款金额可以少于整单。
     </p>
     <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" />
 
@@ -153,7 +159,7 @@ function onReviewed(next: AdminRefund): void {
         </el-table-column>
         <el-table-column label="操作" width="90" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openDetail(row)">审核</el-button>
+            <el-button link type="primary" @click="openDetail(row)">查看</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -168,7 +174,12 @@ function onReviewed(next: AdminRefund): void {
       @current-change="onPage"
     />
 
-    <RefundReviewDrawer v-model="detailOpen" :refund="detailRefund" @reviewed="onReviewed" />
+    <RefundReviewDrawer
+      v-model="detailOpen"
+      :refund="detailRefund"
+      readonly
+      @reviewed="onReviewed"
+    />
   </section>
 </template>
 

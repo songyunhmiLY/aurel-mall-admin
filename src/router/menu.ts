@@ -10,7 +10,6 @@ import {
   House,
   Key,
   Medal,
-  Money,
   Notebook,
   OfficeBuilding,
   Picture,
@@ -64,13 +63,6 @@ export const adminSections: AdminMenuSection[] = [
     tabs: [
       { key: 'catalog', title: '商品', path: paths.catalog, permission: 'catalog', icon: Goods },
       { key: 'order', title: '订单', path: paths.order, permission: 'order', icon: Tickets },
-      {
-        key: 'order-refunds',
-        title: '退货退款',
-        path: paths.orderRefunds,
-        permission: 'order.refunds',
-        icon: Money,
-      },
     ],
   },
   {

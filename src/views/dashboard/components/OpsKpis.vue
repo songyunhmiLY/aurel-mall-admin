@@ -2,7 +2,7 @@
 import type { OpsKpis } from '@/api/ops-overview'
 
 import { comparisonText, moneyText } from '../ops-format'
-import { memberList, orderList, refundList, withdrawalList } from '../ops-links'
+import { memberList, orderList, withdrawalList } from '../ops-links'
 import OpsMetric from './OpsMetric.vue'
 
 defineProps<{
@@ -33,9 +33,7 @@ defineProps<{
       </router-link>
       <p class="cash__split">
         <router-link :to="orderList()">实收 {{ moneyText(kpis.wechatCash.cashInFen) }}</router-link>
-        <router-link :to="refundList()"
-          >实退 {{ moneyText(kpis.wechatCash.cashRefundedFen) }}</router-link
-        >
+        <span class="cash__flat">实退 {{ moneyText(kpis.wechatCash.cashRefundedFen) }}</span>
       </p>
     </article>
     <OpsMetric
@@ -101,6 +99,10 @@ defineProps<{
 .cash__split a {
   color: var(--aurel-ink-soft);
   text-decoration: none;
+}
+
+.cash__flat {
+  color: var(--aurel-ink-soft);
 }
 
 @media (min-width: 1600px) {

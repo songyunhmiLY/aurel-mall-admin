@@ -2,7 +2,7 @@
 import type { OpsWithdrawals } from '@/api/ops-overview'
 
 import { moneyText } from '../ops-format'
-import { refundList, withdrawalList } from '../ops-links'
+import { withdrawalList } from '../ops-links'
 
 defineProps<{
   withdrawals: OpsWithdrawals
@@ -30,27 +30,8 @@ defineProps<{
           {{ moneyText(withdrawals.completedPayouts.payoutFen) }}
         </router-link>
       </li>
-      <li>
-        <span>待审核退款</span>
-        <router-link :to="refundList('pending')"
-          >{{ withdrawals.pendingRefunds.count }} 笔</router-link
-        >
-      </li>
     </ul>
-    <p class="hint">
-      有待审核提现的会员不能同时申请商城退款，有待审核退款的会员不能同时提现。
-      <router-link :to="withdrawalList('pending')">
-        提现挡住退款 {{ withdrawals.mutualExclusion.withdrawalBlocksRefundUserCount }} 人
-      </router-link>
-      ，
-      <router-link :to="refundList('pending')">
-        退款挡住提现 {{ withdrawals.mutualExclusion.refundBlocksWithdrawalUserCount }} 人
-      </router-link>
-      。两边都待审核 {{ withdrawals.mutualExclusion.bothPendingUserCount }} 人。
-    </p>
-    <p class="hint">
-      待审核退款在申请时还没有审定退款额。已打款金额是申请金额，实付与现金流水里的提现打款相同。
-    </p>
+    <p class="hint">已打款金额是申请金额，实付与现金流水里的提现打款相同。</p>
   </section>
 </template>
 

@@ -18,6 +18,8 @@ import {
 const props = defineProps<{
   modelValue: boolean
   refund: AdminRefund | null
+  /** 退款能力已下线后的只读模式：只展示明细，不提供审核动作。 */
+  readonly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -213,7 +215,16 @@ async function submitReject(): Promise<void> {
         </el-descriptions-item>
       </el-descriptions>
 
-      <template v-if="current.status === 'pending'">
+      <el-alert
+        v-if="props.readonly && current.status === 'pending'"
+        class="notice"
+        type="info"
+        title="退款功能已下线，这笔历史申请不再支持审核"
+        show-icon
+        :closable="false"
+      />
+
+      <template v-if="!props.readonly && current.status === 'pending'">
         <h2>审核</h2>
         <p class="hint">只填写下面一项。另一项按应付预览，请求里不会带上。</p>
         <el-form label-position="top" @submit.prevent="submitApprove">
