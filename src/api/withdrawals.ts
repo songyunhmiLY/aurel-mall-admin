@@ -15,6 +15,10 @@ export interface AdminWithdrawal {
   id: string
   userId: string
   amountFen: string
+  /** 按当前锁定费率算出的手续费，财务据此算线下应打款金额。 */
+  feePreviewFen: string | null
+  /** 按当前锁定费率算出的应打款金额。 */
+  payoutPreviewFen: string | null
   status: string
   accountName: string
   bankName: string
@@ -78,6 +82,8 @@ function readWithdrawal(data: unknown): AdminWithdrawal {
     id,
     userId,
     amountFen,
+    feePreviewFen: readNullableDecimalFen(record.feePreviewFen),
+    payoutPreviewFen: readNullableDecimalFen(record.payoutPreviewFen),
     status: readString(record.status),
     accountName: readString(record.accountName),
     bankName: readString(record.bankName),

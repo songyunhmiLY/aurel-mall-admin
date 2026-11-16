@@ -63,11 +63,9 @@ function payoutMessage(row: AdminWithdrawal) {
   return h('div', { class: 'payout-confirm' }, [
     h('p', '系统不会自动打款。请确认财务已经完成线下转账。'),
     h('p', `申请金额：${decimalFenText(row.amountFen)}`),
-    h('p', '手续费：按本次确认时的锁定手续费计算，不是申请时的手续费。'),
-    h(
-      'p',
-      `实际打款：${decimalFenText(row.amountFen)} − 手续费。转到银行卡的是这一金额，不是申请金额全额。`,
-    ),
+    h('p', `手续费（按当前费率）：${decimalFenText(row.feePreviewFen)}`),
+    h('p', `应打款：${decimalFenText(row.payoutPreviewFen)}。转到银行卡的是这一金额，不是申请金额全额。`),
+    h('p', '手续费按确认打款这一刻的锁定费率重算，与申请时的费率可能不同。'),
     h('p', `开户名：${row.accountName || '—'}`),
     h('p', `开户银行：${row.bankName || '—'}`),
     h('p', `银行卡号：${row.accountNo || '—'}`),
@@ -193,17 +191,17 @@ async function refreshQuietly(id: string): Promise<void> {
             type="warning"
             show-icon
             :closable="false"
-            title="系统不会自动打款。请在财务已经完成线下转账后再确认。"
+            title="系统不会自动打款。请按下方应打款金额在财务完成线下转账后，再回来确认。"
           />
           <el-descriptions :column="1" border>
             <el-descriptions-item label="申请金额">
               {{ decimalFenText(withdrawal.amountFen) }}
             </el-descriptions-item>
-            <el-descriptions-item label="手续费">
-              按本次确认时的锁定手续费计算，不是申请时的手续费
+            <el-descriptions-item label="手续费（按当前费率）">
+              {{ decimalFenText(withdrawal.feePreviewFen) }}
             </el-descriptions-item>
-            <el-descriptions-item label="实际打款">
-              {{ decimalFenText(withdrawal.amountFen) }} − 手续费。转到银行卡的是这一金额
+            <el-descriptions-item label="应打款">
+              {{ decimalFenText(withdrawal.payoutPreviewFen) }}。转到银行卡的是这一金额
             </el-descriptions-item>
           </el-descriptions>
           <el-alert
