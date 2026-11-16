@@ -63,13 +63,13 @@ async function load(id: string): Promise<void> {
   }
 }
 
-/** 人工强制完成结算：系统外处理完后点击，扣冻结（不够扣到空并写备注）、补入座、订单转已支付。 */
+/** 人工强制完成结算：系统外处理完后点击，扣冻结（不够时尽量扣，创业专区按单价对齐、零头保留，缺口写备注）、补入座、订单转已支付。 */
 async function onForceSettle(): Promise<void> {
   const current = order.value
   if (!current || !current.settlementPending || settling.value) return
   try {
     await ElMessageBox.confirm(
-      '确认已在系统外处理完毕？系统会把冻结的钱包份额扣到空（不够扣的缺口写进订单备注），'
+      '确认已在系统外处理完毕？系统会把冻结的钱包份额尽量扣掉（创业专区按单价对齐、不足单价的零头保留，扣不掉的缺口写进订单备注），'
         + '创业专区订单尝试补入座，然后把订单恢复为已支付。',
       '手动完成结算',
       { confirmButtonText: '完成结算', cancelButtonText: '取消', type: 'warning' },

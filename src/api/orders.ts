@@ -192,8 +192,8 @@ export interface ForceSettleResult {
 }
 
 /**
- * 人工强制完成结算。后端把钱包冻结扣到空（不够扣的缺口写进订单备注）、
- * 尝试为创业专区订单入座，然后把订单转为已支付并关闭结算补偿。
+ * 人工强制完成结算。后端把钱包冻结尽量扣掉（创业专区按单价对齐、零头留在账户，
+ * 不够扣的缺口写进订单备注）、尝试为创业专区订单入座，然后把订单转为已支付并关闭结算补偿。
  * 仅当订单存在活跃结算补偿（黄色「结算异常」标记）时可用。
  */
 export async function forceSettleOrder(id: string): Promise<ForceSettleResult> {
