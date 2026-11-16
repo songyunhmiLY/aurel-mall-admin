@@ -22,7 +22,10 @@ export interface Product {
   priceFen: number
   /** 会员商城为分。1 PV = 1 元 = 100。创业专区为 null。 */
   pvFen: number | null
-  /** 含运费的进货成本（分），可空。未设置按 0 计。 */
+  /**
+   * 含运费的进货成本（分）。业务上不再使用：管理端不录入、不展示，库内字段保留并恒为 0。
+   * 保留类型是为了继续兼容接口返回，不参与任何页面计算。
+   */
   costFen: number | null
   stockQuantity: number
   status: string

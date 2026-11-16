@@ -216,8 +216,6 @@ function exportSkuSalesCsv(): void {
     '待发货金额(元)',
     '已发货件数',
     '已发货金额(元)',
-    '成本合计(元)',
-    '毛利(元)',
   ]
   const lines = rows.map((row) =>
     [
@@ -229,8 +227,6 @@ function exportSkuSalesCsv(): void {
       yuan(row.pendingAmountFen),
       row.shippedQuantity,
       yuan(row.shippedAmountFen),
-      yuan(row.costAmountFen),
-      yuan(row.profitFen),
     ]
       .map((cell) => `"${String(cell).replaceAll('"', '""')}"`)
       .join(','),
@@ -650,7 +646,7 @@ onMounted(() => {
         <div class="finance__pane">
           <p class="ops-hint">
             按时间段汇总每个单品的销售数量与金额，按订单状态拆出待发货（已支付未发货）与已发货。
-            成本按下单时的成本快照（含运费）合计；未录成本的商品按 0 计，毛利即销售金额。
+            口径为下单完成付款的时间，不含未支付与已关闭订单。
           </p>
           <div class="ops-toolbar">
             <el-select v-model="skuSalesQuery.zone" class="ops-filter" placeholder="专区">
@@ -683,12 +679,6 @@ onMounted(() => {
               <template #default="{ row }">
                 {{ row.shippedQuantity }} 件 / {{ yuan(row.shippedAmountFen) }} 元
               </template>
-            </el-table-column>
-            <el-table-column label="成本合计" align="right" width="120">
-              <template #default="{ row }">{{ yuan(row.costAmountFen) }} 元</template>
-            </el-table-column>
-            <el-table-column label="毛利" align="right" width="120">
-              <template #default="{ row }">{{ yuan(row.profitFen) }} 元</template>
             </el-table-column>
             <template #empty>
               <el-empty description="该区间没有已支付/已发货的订单" />

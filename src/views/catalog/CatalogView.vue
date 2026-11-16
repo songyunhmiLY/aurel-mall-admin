@@ -138,11 +138,6 @@ function priceText(row: Product): string {
   return `${fenToYuan(row.priceFen)} 元`
 }
 
-function costText(row: Product): string {
-  if (row.costFen == null) return '未录入'
-  return `${fenToYuan(row.costFen)} 元`
-}
-
 function pvText(row: Product): string {
   if (row.zone !== 'mall' || row.pvFen == null) return '—'
   return fenToYuan(row.pvFen)
@@ -204,9 +199,6 @@ function pvText(row: Product): string {
       </el-table-column>
       <el-table-column label="PV" width="90">
         <template #default="{ row }">{{ pvText(row) }}</template>
-      </el-table-column>
-      <el-table-column label="成本" width="110">
-        <template #default="{ row }">{{ costText(row) }}</template>
       </el-table-column>
       <el-table-column label="库存" width="80">
         <template #default="{ row }">{{ row.stockQuantity }}</template>

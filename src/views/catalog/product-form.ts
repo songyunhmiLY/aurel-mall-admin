@@ -16,8 +16,6 @@ export interface ProductDraft {
   imageUrlsText: string
   status: ProductStatus
   priceYuan: string
-  /** 成本价（元，含运费）。留空表示未录入，利润按 0 计。 */
-  costYuan: string
   stockQuantity: number | undefined
   pvYuan: string
   categoryId: string
@@ -60,7 +58,6 @@ export function createDraft(): ProductDraft {
     imageUrlsText: '',
     status: 'draft',
     priceYuan: '',
-    costYuan: '',
     stockQuantity: 0,
     pvYuan: '',
     categoryId: '',
@@ -82,7 +79,6 @@ export function draftFromProduct(product: Product): ProductDraft {
     imageUrlsText: product.imageUrls.join('\n'),
     status,
     priceYuan: fenToYuan(product.priceFen),
-    costYuan: product.costFen == null ? '' : fenToYuan(product.costFen),
     stockQuantity: product.stockQuantity,
     pvYuan: product.pvFen == null ? '' : fenToYuan(product.pvFen),
     categoryId: product.categoryId,
@@ -102,9 +98,8 @@ export function buildProductCreate(draft: ProductDraft): ProductCreateBody {
     body: shared.body,
     coverUrl: shared.coverUrl,
     imageUrls: shared.imageUrls,
-    // 运费并入售价与成本，不再单独体现
+    // 运费并入售价，不再单独体现。成本价不录入，库内字段保留并恒为 0。
     freightFen: 0,
-    costFen: readCostFen(draft.costYuan),
     stockQuantity,
     status: draft.status,
   }
@@ -124,9 +119,8 @@ export function buildProductUpdate(draft: ProductDraft): ProductUpdateBody {
     body: shared.body,
     coverUrl: shared.coverUrl,
     imageUrls: shared.imageUrls,
-    // 运费并入售价与成本，不再单独体现
+    // 运费并入售价，不再单独体现。成本价不录入，库内字段保留并恒为 0。
     freightFen: 0,
-    costFen: readCostFen(draft.costYuan),
     status: draft.status,
   }
   if (draft.zone === 'mall') {
@@ -169,15 +163,6 @@ function readShared(draft: ProductDraft): {
     coverUrl: coverUrl || null,
     imageUrls,
   }
-}
-
-/** 成本价留空表示未录入；填了必须是不小于 0 的金额。 */
-function readCostFen(input: string): number | null {
-  const trimmed = input.trim()
-  if (!trimmed) return null
-  const fen = parseYuanToFen(trimmed)
-  if (fen == null) throw new Error('成本价请填写不小于 0 的金额，最多两位小数')
-  return fen
 }
 
 function readPriceFen(input: string): number {
