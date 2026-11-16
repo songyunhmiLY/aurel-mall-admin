@@ -13,7 +13,6 @@ import {
 } from '@/api/products'
 import CategoryDialog from './CategoryDialog.vue'
 import ProductFormDialog from './ProductFormDialog.vue'
-import StockDialog from './StockDialog.vue'
 import { statusLabel, statusTagType, zoneLabel } from './product-form'
 
 const pageSize = 20
@@ -29,8 +28,6 @@ const status = ref('')
 
 const editorOpen = ref(false)
 const editingId = ref<string | null>(null)
-const stockOpen = ref(false)
-const stockTarget = ref<Product | null>(null)
 const categoryOpen = ref(false)
 
 onMounted(() => {
@@ -88,20 +85,10 @@ function openEdit(row: Product): void {
   editorOpen.value = true
 }
 
-function openStock(row: Product): void {
-  stockTarget.value = row
-  stockOpen.value = true
-}
-
 function onSaved(warnings: string[]): void {
   notice.value = warnings.join('；')
   if (warnings.length > 0) ElMessage.warning('已保存，请查看接口提示')
   else ElMessage.success('已保存')
-  void load()
-}
-
-function onStockSaved(): void {
-  ElMessage.success('库存已更新')
   void load()
 }
 
@@ -200,9 +187,6 @@ function pvText(row: Product): string {
       <el-table-column label="PV" width="90">
         <template #default="{ row }">{{ pvText(row) }}</template>
       </el-table-column>
-      <el-table-column label="库存" width="80">
-        <template #default="{ row }">{{ row.stockQuantity }}</template>
-      </el-table-column>
       <el-table-column label="分类" min-width="120">
         <template #default="{ row }">{{ row.categoryName || '—' }}</template>
       </el-table-column>
@@ -212,7 +196,6 @@ function pvText(row: Product): string {
           <el-button link type="primary" @click="toggleShelf(row)">
             {{ row.status === 'on' ? '下架' : '上架' }}
           </el-button>
-          <el-button link type="primary" @click="openStock(row)">库存</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -232,7 +215,6 @@ function pvText(row: Product): string {
       :categories="categories"
       @saved="onSaved"
     />
-    <StockDialog v-model="stockOpen" :product="stockTarget" @saved="onStockSaved" />
     <CategoryDialog v-model="categoryOpen" :categories="categories" @created="onCategoryCreated" />
   </section>
 </template>

@@ -64,7 +64,6 @@ function applyDraft(next: ProductDraft): void {
   draft.imageUrlsText = next.imageUrlsText
   draft.status = next.status
   draft.priceYuan = next.priceYuan
-  draft.stockQuantity = next.stockQuantity
   draft.pvYuan = next.pvYuan
   draft.categoryId = next.categoryId
 }
@@ -188,9 +187,6 @@ async function save(): Promise<void> {
           <p class="field-hint">
             1 PV = 1 元，按分提交，与售价分开。PV 大于售价时仍可保存，并显示接口返回的提示。
           </p>
-        </el-form-item>
-        <el-form-item v-if="!editing" label="库存">
-          <el-input-number v-model="draft.stockQuantity" :min="0" :step="1" :precision="0" />
         </el-form-item>
         <el-form-item v-if="draft.zone === 'mall'" label="分类">
           <el-select v-model="draft.categoryId" clearable placeholder="不选择">

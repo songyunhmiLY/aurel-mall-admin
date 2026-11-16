@@ -16,7 +16,6 @@ export interface ProductDraft {
   imageUrlsText: string
   status: ProductStatus
   priceYuan: string
-  stockQuantity: number | undefined
   pvYuan: string
   categoryId: string
 }
@@ -58,7 +57,6 @@ export function createDraft(): ProductDraft {
     imageUrlsText: '',
     status: 'draft',
     priceYuan: '',
-    stockQuantity: 0,
     pvYuan: '',
     categoryId: '',
   }
@@ -79,7 +77,6 @@ export function draftFromProduct(product: Product): ProductDraft {
     imageUrlsText: product.imageUrls.join('\n'),
     status,
     priceYuan: fenToYuan(product.priceFen),
-    stockQuantity: product.stockQuantity,
     pvYuan: product.pvFen == null ? '' : fenToYuan(product.pvFen),
     categoryId: product.categoryId,
   }
@@ -87,10 +84,6 @@ export function draftFromProduct(product: Product): ProductDraft {
 
 export function buildProductCreate(draft: ProductDraft): ProductCreateBody {
   const shared = readShared(draft)
-  const stockQuantity = draft.stockQuantity
-  if (stockQuantity == null || !Number.isSafeInteger(stockQuantity) || stockQuantity < 0) {
-    throw new Error('请填写不小于 0 的整数库存')
-  }
   const body: ProductCreateBody = {
     zone: draft.zone,
     name: shared.name,
@@ -100,7 +93,6 @@ export function buildProductCreate(draft: ProductDraft): ProductCreateBody {
     imageUrls: shared.imageUrls,
     // 运费并入售价，不再单独体现。成本价不录入，库内字段保留并恒为 0。
     freightFen: 0,
-    stockQuantity,
     status: draft.status,
   }
   if (draft.zone === 'mall') {

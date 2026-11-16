@@ -27,6 +27,7 @@ export interface Product {
    * 保留类型是为了继续兼容接口返回，不参与任何页面计算。
    */
   costFen: number | null
+  /** 库存只留档：不参与下单、结算与页面展示。 */
   stockQuantity: number
   status: string
   skuId: string
@@ -59,11 +60,10 @@ export interface ProductCreateBody {
   pvFen?: number
   costFen?: number | null
   categoryId?: string | null
-  stockQuantity: number
   status: ProductStatus
 }
 
-/** 与 UpdateProductDto 一致。不能带 zone，也不能带库存。运费并入售价，固定 0。 */
+/** 与 UpdateProductDto 一致。不能带 zone。运费并入售价，固定 0。 */
 export interface ProductUpdateBody {
   name: string
   subtitle: string | null
@@ -121,13 +121,6 @@ export async function updateProduct(
 export async function setProductShelf(id: string, status: 'on' | 'off'): Promise<Product> {
   const { data } = await http.post<unknown>(`${productsPath}/${encodeURIComponent(id)}/shelf`, {
     status,
-  })
-  return readProduct(data)
-}
-
-export async function updateProductStock(id: string, quantity: number): Promise<Product> {
-  const { data } = await http.put<unknown>(`${productsPath}/${encodeURIComponent(id)}/stock`, {
-    quantity,
   })
   return readProduct(data)
 }
