@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { apiErrorMessage } from '@/api/http'
-import { fetchOrder, type AdminOrder } from '@/api/orders'
+import { fetchOrder, forceSettleOrder, type AdminOrder } from '@/api/orders'
 import {
   fenText,
   formatOrderTime,
@@ -29,6 +30,8 @@ const loading = ref(false)
 const loadError = ref('')
 const shipError = ref('')
 const justShipped = ref(false)
+const settling = ref(false)
+const settleNote = ref('')
 const order = ref<AdminOrder | null>(null)
 
 watch(
@@ -40,6 +43,7 @@ watch(
       loadError.value = ''
       shipError.value = ''
       justShipped.value = false
+      settleNote.value = ''
     }
   },
 )
@@ -56,6 +60,36 @@ async function load(id: string): Promise<void> {
     loadError.value = apiErrorMessage(error, '读取订单失败')
   } finally {
     loading.value = false
+  }
+}
+
+/** 人工强制完成结算：系统外处理完后点击，扣冻结（不够扣到空并写备注）、补入座、订单转已支付。 */
+async function onForceSettle(): Promise<void> {
+  const current = order.value
+  if (!current || !current.settlementPending || settling.value) return
+  try {
+    await ElMessageBox.confirm(
+      '确认已在系统外处理完毕？系统会把冻结的钱包份额扣到空（不够扣的缺口写进订单备注），'
+        + '创业专区订单尝试补入座，然后把订单恢复为已支付。',
+      '手动完成结算',
+      { confirmButtonText: '完成结算', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  settling.value = true
+  shipError.value = ''
+  try {
+    const result = await forceSettleOrder(current.id)
+    settleNote.value = result.note
+    ElMessage.success('已完成结算，订单恢复为已支付')
+    emit('changed')
+    const id = props.orderId
+    if (id) order.value = await fetchOrder(id)
+  } catch (error) {
+    ElMessage.error(apiErrorMessage(error, '强制结算失败'))
+  } finally {
+    settling.value = false
   }
 }
 
@@ -101,6 +135,14 @@ async function onShipFailed(message: string, refresh: boolean): Promise<void> {
             <el-tag size="small" effect="plain" :type="orderStatusTag(order.status)">
               {{ orderStatusLabel(order.status) }}
             </el-tag>
+            <el-tag
+              v-if="order.settlementPending"
+              size="small"
+              effect="dark"
+              type="warning"
+              class="flag"
+              >！</el-tag
+            >
           </el-descriptions-item>
           <el-descriptions-item label="下单时间">
             {{ formatOrderTime(order.placedAt) }}
@@ -197,6 +239,38 @@ async function onShipFailed(message: string, refresh: boolean): Promise<void> {
           </el-table-column>
         </el-table>
 
+        <h2>结算异常处理</h2>
+        <el-alert
+          v-if="order.settlementPending"
+          class="notice"
+          type="warning"
+          title="微信已支付，但订单结算没有完成（钱包扣款或入座失败）。请在系统外处理完毕后点击下方按钮。"
+          show-icon
+          :closable="false"
+        />
+        <el-alert
+          v-else-if="settleNote"
+          class="notice"
+          type="success"
+          :title="'已人工完成结算。'"
+          :description="settleNote"
+          show-icon
+          :closable="false"
+        />
+        <div v-if="order.settlementPending" class="settle-actions">
+          <el-button type="warning" :loading="settling" @click="onForceSettle">
+            手动完成结算
+          </el-button>
+        </div>
+        <el-descriptions
+          v-if="order.remark && !order.settlementPending"
+          :column="1"
+          border
+          class="remark"
+        >
+          <el-descriptions-item label="运营备注">{{ order.remark }}</el-descriptions-item>
+        </el-descriptions>
+
         <h2>发货</h2>
         <el-alert
           v-if="shipError"
@@ -229,6 +303,18 @@ async function onShipFailed(message: string, refresh: boolean): Promise<void> {
 <style scoped>
 .detail {
   min-height: 240px;
+}
+
+.settle-actions {
+  margin: 12px 0 4px;
+}
+
+.remark {
+  margin-top: 8px;
+}
+
+.flag {
+  margin-left: 6px;
 }
 
 h2 {

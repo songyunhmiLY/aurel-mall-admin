@@ -144,11 +144,18 @@ function openDetail(row: AdminOrder): void {
         <el-table-column label="专区" width="110">
           <template #default="{ row }">{{ orderZoneLabel(row.zone) }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="100">
+        <el-table-column label="状态" width="150">
           <template #default="{ row }">
             <el-tag size="small" effect="plain" :type="orderStatusTag(row.status)">
               {{ orderStatusLabel(row.status) }}
             </el-tag>
+            <el-tooltip
+              v-if="row.settlementPending"
+              content="微信已支付但结算未完成，进入详情人工处理"
+              placement="top"
+            >
+              <el-tag size="small" effect="dark" type="warning" class="flag">！</el-tag>
+            </el-tooltip>
           </template>
         </el-table-column>
         <el-table-column label="应付" min-width="110">

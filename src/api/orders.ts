@@ -1,5 +1,5 @@
 import { ApiError, http } from './http'
-import { asRecord, readId, readInteger, readNullableString, readPage, readString } from './json'
+import { asRecord, readBoolean, readId, readInteger, readNullableString, readPage, readString } from './json'
 
 export type OrderZone = 'startup' | 'mall'
 export type OrderStatus = 'pending_payment' | 'paid' | 'shipped' | 'closed'
@@ -50,6 +50,12 @@ export interface AdminOrder {
   paidAt: string
   shippedAt: string
   closedAt: string
+  /** 微信已支付但结算未完成（存在活跃结算补偿），界面据此显示黄色「结算异常」标记。 */
+  settlementPending: boolean
+  /** 活跃结算补偿的 id；settlementPending 为 false 时为 null。 */
+  compensationId: string | null
+  /** 运营备注。人工强制完成结算时由系统写入缺口与入座处理说明。 */
+  remark: string | null
 }
 
 export interface OrderPage {
@@ -128,6 +134,9 @@ function readOrder(data: unknown): AdminOrder {
     paidAt: readNullableString(record.paidAt),
     shippedAt: readNullableString(record.shippedAt),
     closedAt: readNullableString(record.closedAt),
+    settlementPending: readBoolean(record.settlementPending) === true,
+    compensationId: record.compensationId == null ? null : readString(record.compensationId),
+    remark: record.remark == null ? null : readString(record.remark),
   }
 }
 
@@ -175,4 +184,23 @@ function readFen(value: unknown): number {
   const fen = readInteger(value)
   if (fen == null) throw new ApiError('订单响应无效', 500)
   return fen
+}
+
+export interface ForceSettleResult {
+  /** 写入订单备注的处理说明。 */
+  note: string
+}
+
+/**
+ * 人工强制完成结算。后端把钱包冻结扣到空（不够扣的缺口写进订单备注）、
+ * 尝试为创业专区订单入座，然后把订单转为已支付并关闭结算补偿。
+ * 仅当订单存在活跃结算补偿（黄色「结算异常」标记）时可用。
+ */
+export async function forceSettleOrder(id: string): Promise<ForceSettleResult> {
+  const { data } = await http.post<unknown>(
+    `/admin/orders/${encodeURIComponent(id)}/force-settle`,
+  )
+  const record = asRecord(data)
+  if (!record) throw new ApiError('强制结算响应无效', 500)
+  return { note: readString(record.note) }
 }
