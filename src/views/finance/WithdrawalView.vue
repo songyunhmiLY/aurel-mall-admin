@@ -86,9 +86,7 @@ function openDetail(row: AdminWithdrawal): void {
     </header>
     <p class="hint">
       可按状态和用户 ID
-      筛选。驳回会解冻申请金额。确认已打款表示财务已经按应打款金额完成线下转账，系统不会自动打款。手续费按确认打款这一刻的锁定费率和申请金额计算，应打款
-      = 申请金额 −
-      手续费，详情抽屉里直接给出该金额。重复处理会提示「提现申请已处理」。
+      筛选。驳回会解冻申请金额。确认已打款表示财务已经按申请金额完成线下转账，系统不会自动打款。平台不收取提现手续费，账上按申请金额全额记支出；银行若另行扣费，由银行向用户收取。重复处理会提示「提现申请已处理」。
     </p>
     <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" />
 

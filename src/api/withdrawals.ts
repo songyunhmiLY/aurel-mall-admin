@@ -5,7 +5,9 @@ import { asRecord, readDecimalFen, readId, readNullableString, readPage, readStr
 export interface WithdrawalSettlement {
   outcome: string
   amountFen: string
+  /** 历史字段。平台不收手续费，新记录的 feeFen 恒为 null。 */
   feeFen: string | null
+  /** 实际打款金额。平台不收手续费，与申请金额相等。 */
   payoutFen: string | null
   adminId: string
   settledAt: string
@@ -15,10 +17,6 @@ export interface AdminWithdrawal {
   id: string
   userId: string
   amountFen: string
-  /** 按当前锁定费率算出的手续费，财务据此算线下应打款金额。 */
-  feePreviewFen: string | null
-  /** 按当前锁定费率算出的应打款金额。 */
-  payoutPreviewFen: string | null
   status: string
   accountName: string
   bankName: string
@@ -66,7 +64,7 @@ export async function rejectWithdrawal(id: string): Promise<AdminWithdrawal> {
   return readWithdrawal(data)
 }
 
-/** 确认财务已经完成线下打款。请求没有 body，手续费由服务器在此刻计算。 */
+/** 确认财务已经完成线下打款。请求没有 body，打款金额就是申请金额。 */
 export async function payoutWithdrawal(id: string): Promise<AdminWithdrawal> {
   const { data } = await http.post<unknown>(`${withdrawalsPath}/${encodeURIComponent(id)}/payout`)
   return readWithdrawal(data)
@@ -82,8 +80,6 @@ function readWithdrawal(data: unknown): AdminWithdrawal {
     id,
     userId,
     amountFen,
-    feePreviewFen: readNullableDecimalFen(record.feePreviewFen),
-    payoutPreviewFen: readNullableDecimalFen(record.payoutPreviewFen),
     status: readString(record.status),
     accountName: readString(record.accountName),
     bankName: readString(record.bankName),

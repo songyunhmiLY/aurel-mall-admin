@@ -62,15 +62,12 @@ async function load(id: string): Promise<void> {
 function payoutMessage(row: AdminWithdrawal) {
   return h('div', { class: 'payout-confirm' }, [
     h('p', '系统不会自动打款。请确认财务已经完成线下转账。'),
-    h('p', `申请金额：${decimalFenText(row.amountFen)}`),
-    h('p', `手续费（按当前费率）：${decimalFenText(row.feePreviewFen)}`),
-    h('p', `应打款：${decimalFenText(row.payoutPreviewFen)}。转到银行卡的是这一金额，不是申请金额全额。`),
-    h('p', '手续费按确认打款这一刻的锁定费率重算，与申请时的费率可能不同。'),
+    h('p', `应打款：${decimalFenText(row.amountFen)}（等于申请金额）`),
     h('p', `开户名：${row.accountName || '—'}`),
     h('p', `开户银行：${row.bankName || '—'}`),
     h('p', `银行卡号：${row.accountNo || '—'}`),
     h('p', `开户支行：${row.branchName || '—'}`),
-    h('p', '若当前手续费高于申请金额，打款会被拒绝，冻结金额保持不变。'),
+    h('p', '平台不收取提现手续费，账上按申请金额全额记支出。银行若另行扣费，由银行向用户收取，与平台账无关。'),
   ])
 }
 
@@ -91,9 +88,8 @@ async function confirmPayout(): Promise<void> {
   try {
     const next = await payoutWithdrawal(row.id)
     withdrawal.value = next
-    const fee = decimalFenText(next.settlement?.feeFen ?? null)
     const payout = decimalFenText(next.settlement?.payoutFen ?? null)
-    ElMessage.success(`已记录打款。手续费 ${fee}，实际打款 ${payout}。`)
+    ElMessage.success(`已记录打款，金额 ${payout}。`)
     emit('changed')
   } catch (error) {
     actionError.value = apiErrorMessage(error, '打款失败')
@@ -191,19 +187,16 @@ async function refreshQuietly(id: string): Promise<void> {
             type="warning"
             show-icon
             :closable="false"
-            title="系统不会自动打款。请按下方应打款金额在财务完成线下转账后，再回来确认。"
+            title="系统不会自动打款。请按申请金额在财务完成线下转账后，再回来确认。"
           />
           <el-descriptions :column="1" border>
-            <el-descriptions-item label="申请金额">
+            <el-descriptions-item label="应打款（等于申请金额）">
               {{ decimalFenText(withdrawal.amountFen) }}
             </el-descriptions-item>
-            <el-descriptions-item label="手续费（按当前费率）">
-              {{ decimalFenText(withdrawal.feePreviewFen) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="应打款">
-              {{ decimalFenText(withdrawal.payoutPreviewFen) }}。转到银行卡的是这一金额
-            </el-descriptions-item>
           </el-descriptions>
+          <p class="hint">
+            平台不收取提现手续费。银行若另行扣费，属于用户与银行之间的费用，不进平台账。
+          </p>
           <el-alert
             v-if="actionError"
             class="notice"
@@ -230,10 +223,7 @@ async function refreshQuietly(id: string): Promise<void> {
             <el-descriptions-item label="申请金额">
               {{ decimalFenText(withdrawal.settlement.amountFen) }}
             </el-descriptions-item>
-            <el-descriptions-item label="手续费">
-              {{ decimalFenText(withdrawal.settlement.feeFen) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="实际打款">
+            <el-descriptions-item label="打款金额">
               {{ decimalFenText(withdrawal.settlement.payoutFen) }}
             </el-descriptions-item>
             <el-descriptions-item label="处理时间">
