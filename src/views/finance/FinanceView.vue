@@ -78,14 +78,12 @@ function compStatusTag(code: string): 'warning' | 'primary' | 'success' | 'dange
   return 'primary'
 }
 
-/** 每行给操作员的待办提示。库存不足不自动触发，补货后回这里点按钮。 */
+/** 每行给操作员的待办提示。 */
 function compHint(row: SettlementCompensation): string {
   if (row.status === 'completed') return '订单已按原样完成结算'
   if (row.status === 'refunded') return '微信实收已原路退回，冻结份额已解冻'
-  if (row.failReason === 'stock_insufficient')
-    return '请先在商品管理补足库存，再点「继续结算」'
   if (row.failReason === 'wallet_shortfall')
-    return '钱包份额不足：可点「补差后结算」由平台补足差额'
+    return '钱包份额不足：到订单页对带黄色「！」的订单点「手动完成结算」'
   if (row.failReason === 'order_cancelled') return '订单被超时取消，重试时会自动复活并完成'
   return '系统会自动重试，无需操作'
 }
@@ -233,17 +231,14 @@ function exportSkuSalesCsv(): void {
   )
 }
 
-async function onRetry(row: SettlementCompensation, subsidize: boolean): Promise<void> {
-  const confirmText = subsidize
-    ? `按订单拆分份额由平台补足钱包差额后继续结算订单 ${row.orderNo}？`
-    : `继续结算订单 ${row.orderNo}？请确认库存已补足。`
+async function onRetry(row: SettlementCompensation): Promise<void> {
   try {
-    await ElMessageBox.confirm(confirmText, '继续结算', { type: 'warning' })
+    await ElMessageBox.confirm(`继续结算订单 ${row.orderNo}？`, '继续结算', { type: 'warning' })
   } catch {
     return
   }
   try {
-    await retryCompensation(row.id, subsidize)
+    await retryCompensation(row.id)
     ElMessage.success('已执行，结果见状态列')
   } catch (error) {
     ElMessage.error(apiErrorMessage(error, '继续结算失败'))
@@ -599,22 +594,14 @@ onMounted(() => {
             </el-table-column>
             <el-table-column label="操作" width="220" fixed="right">
               <template #default="{ row }">
-                <template v-if="row.status === 'awaiting_operation'">
-                  <el-button size="small" type="primary" plain @click="onRetry(row, false)">
-                    继续结算
-                  </el-button>
-                  <el-button size="small" type="warning" plain @click="onRetry(row, true)">
-                    补差后结算
-                  </el-button>
-                </template>
                 <el-button
-                  v-else-if="row.status === 'auto_retry'"
+                  v-if="row.status === 'awaiting_operation' || row.status === 'auto_retry'"
                   size="small"
                   type="primary"
                   plain
-                  @click="onRetry(row, false)"
+                  @click="onRetry(row)"
                 >
-                  立即重试
+                  {{ row.status === 'awaiting_operation' ? '继续结算' : '立即重试' }}
                 </el-button>
               </template>
             </el-table-column>

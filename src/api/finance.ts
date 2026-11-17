@@ -218,10 +218,10 @@ export async function fetchSkuSales(query: FinanceQuery & {
   }
 }
 
-export async function retryCompensation(id: string, subsidize: boolean): Promise<unknown> {
-  const { data } = await http.post<unknown>(`/admin/finance/settlement-compensations/${id}/retry`, {
-    subsidize,
-  })
+export async function retryCompensation(id: string): Promise<unknown> {
+  const { data } = await http.post<unknown>(
+    `/admin/finance/settlement-compensations/${id}/retry`,
+  )
   return data
 }
 
