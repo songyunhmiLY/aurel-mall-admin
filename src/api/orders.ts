@@ -69,6 +69,9 @@ export interface OrderQuery {
   zone?: OrderZone
   status?: OrderStatus
   userId?: string
+  /** 上海自然日 YYYY-MM-DD，按下单时间过滤（含结束日全天）。 */
+  from?: string
+  to?: string
   page: number
   pageSize: number
 }
@@ -88,6 +91,8 @@ export async function fetchOrders(query: OrderQuery): Promise<OrderPage> {
   if (query.zone) params.zone = query.zone
   if (query.status) params.status = query.status
   if (query.userId) params.userId = query.userId
+  if (query.from) params.from = query.from
+  if (query.to) params.to = query.to
   const { data } = await http.get<unknown>(ordersPath, { params })
   const page = readPage(data, '订单')
   return { ...page, items: page.items.map((item) => readOrder(item)) }

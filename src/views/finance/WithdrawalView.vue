@@ -1,21 +1,30 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
 
 import { apiErrorMessage } from '@/api/http'
-import { decimalFenText } from '@/api/money'
-import { fetchWithdrawals, type AdminWithdrawal, type WithdrawalQuery } from '@/api/withdrawals'
+import { decimalFenText, formatDecimalFen } from '@/api/money'
+import {
+  fetchWithdrawals,
+  type AdminWithdrawal,
+  type WithdrawalQuery,
+} from '@/api/withdrawals'
 import { routeQueryText } from '@/router/query'
+import { csvTimestamp, downloadCsv } from '@/utils/csv'
 import { formatShanghaiTime } from '@/utils/datetime'
 import WithdrawalDetailDrawer from './WithdrawalDetailDrawer.vue'
 import {
+  settlementOutcomeLabel,
   withdrawalStatusLabel,
   withdrawalStatusOptions,
   withdrawalStatusTag,
 } from './withdrawal-labels'
 
 const pageSize = 20
+const exportPageSize = 200
 const loading = ref(false)
+const exporting = ref(false)
 const loadError = ref('')
 const withdrawals = ref<AdminWithdrawal[]>([])
 const total = ref(0)
@@ -24,6 +33,7 @@ const filters = reactive({
   status: '' as '' | NonNullable<WithdrawalQuery['status']>,
   userId: '',
 })
+const range = ref<[string, string] | null>(null)
 const detailOpen = ref(false)
 const detailId = ref<string | null>(null)
 const route = useRoute()
@@ -43,6 +53,8 @@ async function load(): Promise<void> {
     const result = await fetchWithdrawals({
       status: filters.status || undefined,
       userId: filters.userId.trim() || undefined,
+      from: range.value?.[0] || undefined,
+      to: range.value?.[1] || undefined,
       page: page.value,
       pageSize,
     })
@@ -64,6 +76,7 @@ function search(): void {
 function resetFilters(): void {
   filters.status = ''
   filters.userId = ''
+  range.value = null
   page.value = 1
   void load()
 }
@@ -77,6 +90,71 @@ function openDetail(row: AdminWithdrawal): void {
   detailId.value = row.id
   detailOpen.value = true
 }
+
+/** 按当前筛选把提现申请分页拉尽后拼 CSV 导出。 */
+async function onExport(): Promise<void> {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const rows: AdminWithdrawal[] = []
+    for (let current = 1; ; current += 1) {
+      const result = await fetchWithdrawals({
+        status: filters.status || undefined,
+        userId: filters.userId.trim() || undefined,
+        from: range.value?.[0] || undefined,
+        to: range.value?.[1] || undefined,
+        page: current,
+        pageSize: exportPageSize,
+      })
+      rows.push(...result.items)
+      if (rows.length >= result.total || result.items.length === 0) break
+    }
+    if (!rows.length) {
+      ElMessage.info('当前筛选没有可导出的提现申请')
+      return
+    }
+    downloadCsv(`提现申请_${csvTimestamp()}.csv`, WITHDRAWAL_CSV_HEADER, rows.map(csvRow))
+    ElMessage.success(`已导出 ${rows.length} 条提现申请`)
+  } catch (error) {
+    ElMessage.error(apiErrorMessage(error, '提现导出失败'))
+  } finally {
+    exporting.value = false
+  }
+}
+
+const WITHDRAWAL_CSV_HEADER = [
+  '申请ID',
+  '用户ID',
+  '状态',
+  '申请金额(元)',
+  '开户名',
+  '开户银行',
+  '银行卡号',
+  '开户支行',
+  '申请时间',
+  '打款金额(元)',
+  '处理结果',
+  '处理时间',
+  '处理人ID',
+]
+
+function csvRow(row: AdminWithdrawal): string[] {
+  return [
+    row.id,
+    row.userId,
+    withdrawalStatusLabel(row.status),
+    formatDecimalFen(row.amountFen),
+    row.accountName,
+    row.bankName,
+    row.accountNo,
+    row.branchName,
+    formatShanghaiTime(row.appliedAt),
+    row.settlement?.payoutFen ? formatDecimalFen(row.settlement.payoutFen) : '',
+    row.settlement ? settlementOutcomeLabel(row.settlement.outcome) : '',
+    row.settlement ? formatShanghaiTime(row.settlement.settledAt) : '',
+    row.settlement?.adminId ?? '',
+  ]
+}
 </script>
 
 <template>
@@ -86,7 +164,8 @@ function openDetail(row: AdminWithdrawal): void {
     </header>
     <p class="hint">
       可按状态和用户 ID
-      筛选。驳回会解冻申请金额。确认已打款表示财务已经按申请金额完成线下转账，系统不会自动打款。平台不收取提现手续费，账上按申请金额全额记支出；银行若另行扣费，由银行向用户收取。重复处理会提示「提现申请已处理」。
+      筛选。驳回会解冻申请金额。确认已打款表示财务已经按申请金额完成线下转账，系统不会自动打款。平台不收取提现手续费，账上按申请金额全额记支出；银行若另行扣费，由银行向用户收取。重复处理会提示「提现申请已处理」。「导出
+      CSV」按当前筛选条件下载全部命中申请，可直接作为线下打款清单。
     </p>
     <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" />
 
@@ -106,8 +185,18 @@ function openDetail(row: AdminWithdrawal): void {
         class="filter filter--id"
         @keyup.enter="search"
       />
+      <el-date-picker
+        v-model="range"
+        type="daterange"
+        value-format="YYYY-MM-DD"
+        range-separator="至"
+        start-placeholder="申请开始日"
+        end-placeholder="申请结束日"
+        class="range"
+      />
       <el-button type="primary" @click="search">查询</el-button>
       <el-button @click="resetFilters">重置</el-button>
+      <el-button :loading="exporting" @click="onExport">导出 CSV</el-button>
     </div>
 
     <div v-loading="loading" class="table">
@@ -188,6 +277,10 @@ function openDetail(row: AdminWithdrawal): void {
 
 .filter--id {
   width: 180px;
+}
+
+.range {
+  width: 240px;
 }
 
 .table {

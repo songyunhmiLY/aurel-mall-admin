@@ -36,6 +36,9 @@ export interface WithdrawalPage {
 export interface WithdrawalQuery {
   status?: 'pending' | 'rejected' | 'paid'
   userId?: string
+  /** 上海自然日 YYYY-MM-DD，按申请时间过滤（含结束日全天）。 */
+  from?: string
+  to?: string
   page: number
   pageSize: number
 }
@@ -49,6 +52,8 @@ export async function fetchWithdrawals(query: WithdrawalQuery): Promise<Withdraw
   }
   if (query.status) params.status = query.status
   if (query.userId) params.userId = query.userId
+  if (query.from) params.from = query.from
+  if (query.to) params.to = query.to
   const { data } = await http.get<unknown>(withdrawalsPath, { params })
   const page = readPage(data, '提现')
   return { ...page, items: page.items.map((item) => readWithdrawal(item)) }

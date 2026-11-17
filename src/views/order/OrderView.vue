@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
 
 import { apiErrorMessage } from '@/api/http'
+import { fenToYuan } from '@/api/money'
 import { fetchOrders, type AdminOrder, type OrderStatus, type OrderZone } from '@/api/orders'
 import { routeQueryText } from '@/router/query'
+import { csvTimestamp, downloadCsv } from '@/utils/csv'
 import OrderDetailDrawer from './OrderDetailDrawer.vue'
 import {
   fenText,
@@ -17,7 +20,9 @@ import {
 } from './order-labels'
 
 const pageSize = 20
+const exportPageSize = 200
 const loading = ref(false)
+const exporting = ref(false)
 const loadError = ref('')
 const orders = ref<AdminOrder[]>([])
 const total = ref(0)
@@ -27,6 +32,7 @@ const filters = reactive({
   status: '' as '' | OrderStatus,
   userId: '',
 })
+const range = ref<[string, string] | null>(null)
 const detailOpen = ref(false)
 const detailId = ref<string | null>(null)
 const route = useRoute()
@@ -56,6 +62,8 @@ async function load(): Promise<void> {
       zone: filters.zone || undefined,
       status: filters.status || undefined,
       userId: filters.userId.trim() || undefined,
+      from: range.value?.[0] || undefined,
+      to: range.value?.[1] || undefined,
       page: page.value,
       pageSize,
     })
@@ -78,6 +86,7 @@ function resetFilters(): void {
   filters.zone = ''
   filters.status = ''
   filters.userId = ''
+  range.value = null
   page.value = 1
   void load()
 }
@@ -91,6 +100,109 @@ function openDetail(row: AdminOrder): void {
   detailId.value = row.id
   detailOpen.value = true
 }
+
+function currentQuery() {
+  return {
+    zone: filters.zone || undefined,
+    status: filters.status || undefined,
+    userId: filters.userId.trim() || undefined,
+    from: range.value?.[0] || undefined,
+    to: range.value?.[1] || undefined,
+  }
+}
+
+/** 按当前筛选把订单分页拉尽后拼 CSV 导出。 */
+async function onExport(): Promise<void> {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const rows: AdminOrder[] = []
+    for (let current = 1; ; current += 1) {
+      const result = await fetchOrders({ ...currentQuery(), page: current, pageSize: exportPageSize })
+      rows.push(...result.items)
+      if (rows.length >= result.total || result.items.length === 0) break
+    }
+    if (!rows.length) {
+      ElMessage.info('当前筛选没有可导出的订单')
+      return
+    }
+    downloadCsv(`订单_${csvTimestamp()}.csv`, ORDER_CSV_HEADER, rows.map(orderCsvRow))
+    ElMessage.success(`已导出 ${rows.length} 条订单`)
+  } catch (error) {
+    ElMessage.error(apiErrorMessage(error, '订单导出失败'))
+  } finally {
+    exporting.value = false
+  }
+}
+
+const ORDER_CSV_HEADER = [
+  '订单号',
+  '订单ID',
+  '用户ID',
+  '专区',
+  '状态',
+  '商品明细',
+  '商品金额(元)',
+  '运费(元)',
+  '应付(元)',
+  'PV',
+  '积分抵扣(元)',
+  '可提现抵扣(元)',
+  '消费金抵扣(元)',
+  '微信实收(元)',
+  '收货人',
+  '联系电话',
+  '收货地址',
+  '快递公司',
+  '运单号',
+  '下单时间',
+  '付款时间',
+  '发货时间',
+  '关闭时间',
+  '结算异常',
+  '备注',
+]
+
+function orderCsvRow(order: AdminOrder): string[] {
+  const items = order.items
+    .map((item) => `${item.productName} ${item.skuName}×${item.quantity}`)
+    .join('；')
+  const address = [
+    order.shipping.province,
+    order.shipping.city,
+    order.shipping.district,
+    order.shipping.detail,
+  ]
+    .join('')
+    .trim()
+  return [
+    order.orderNo,
+    order.id,
+    order.userId,
+    orderZoneLabel(order.zone),
+    orderStatusLabel(order.status),
+    items,
+    fenToYuan(order.goodsTotalFen),
+    fenToYuan(order.freightFen),
+    fenToYuan(order.payAmountFen),
+    fenToYuan(order.pvFen),
+    fenToYuan(order.pointsFen),
+    fenToYuan(order.withdrawableFen),
+    fenToYuan(order.consumptionFen),
+    fenToYuan(order.wechatFen),
+    order.shipping.contactName,
+    order.shipping.contactPhone,
+    address,
+    order.courierName ?? '',
+    order.trackingNumber ?? '',
+    formatOrderTime(order.placedAt),
+    formatOrderTime(order.paidAt),
+    formatOrderTime(order.shippedAt),
+    formatOrderTime(order.closedAt),
+    order.settlementPending ? '是' : '',
+    order.remark ?? '',
+  ]
+}
 </script>
 
 <template>
@@ -100,7 +212,8 @@ function openDetail(row: AdminOrder): void {
     </header>
     <p class="hint">
       可按专区、状态和用户 ID
-      筛选。只有已支付的订单可以发货。未支付会提示「只有已支付的订单可以发货」，重复发货会提示「订单已发货」。
+      筛选。只有已支付的订单可以发货。未支付会提示「只有已支付的订单可以发货」，重复发货会提示「订单已发货」。「导出
+      CSV」按当前筛选条件下载全部命中订单。
     </p>
     <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" />
 
@@ -128,8 +241,18 @@ function openDetail(row: AdminOrder): void {
         class="filter filter--id"
         @keyup.enter="search"
       />
+      <el-date-picker
+        v-model="range"
+        type="daterange"
+        value-format="YYYY-MM-DD"
+        range-separator="至"
+        start-placeholder="下单开始日"
+        end-placeholder="下单结束日"
+        class="range"
+      />
       <el-button type="primary" @click="search">查询</el-button>
       <el-button @click="resetFilters">重置</el-button>
+      <el-button :loading="exporting" @click="onExport">导出 CSV</el-button>
     </div>
 
     <div v-loading="loading" class="table">
@@ -228,6 +351,10 @@ function openDetail(row: AdminOrder): void {
 
 .filter--id {
   width: 180px;
+}
+
+.range {
+  width: 240px;
 }
 
 .table {

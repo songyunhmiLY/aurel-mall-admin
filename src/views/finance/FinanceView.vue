@@ -18,6 +18,7 @@ import {
 } from '@/api/finance'
 import { apiErrorMessage } from '@/api/http'
 import { formatDecimalFen } from '@/api/money'
+import { downloadCsv } from '@/utils/csv'
 
 type TabKey = 'overview' | 'ledger' | 'reconcile' | 'compensation' | 'sku-sales'
 
@@ -207,18 +208,19 @@ function exportSkuSalesCsv(): void {
     ElMessage.info('当前区间没有可导出的数据')
     return
   }
-  const header = [
-    '商品',
-    '规格',
-    '销量',
-    '销售金额(元)',
-    '待发货件数',
-    '待发货金额(元)',
-    '已发货件数',
-    '已发货金额(元)',
-  ]
-  const lines = rows.map((row) =>
+  downloadCsv(
+    `单品销售汇总_${dateParams.value.from ?? ''}_${dateParams.value.to ?? ''}.csv`,
     [
+      '商品',
+      '规格',
+      '销量',
+      '销售金额(元)',
+      '待发货件数',
+      '待发货金额(元)',
+      '已发货件数',
+      '已发货金额(元)',
+    ],
+    rows.map((row) => [
       row.productName,
       row.skuName,
       row.quantity,
@@ -227,18 +229,8 @@ function exportSkuSalesCsv(): void {
       yuan(row.pendingAmountFen),
       row.shippedQuantity,
       yuan(row.shippedAmountFen),
-    ]
-      .map((cell) => `"${String(cell).replaceAll('"', '""')}"`)
-      .join(','),
+    ]),
   )
-  const csv = `\uFEFF${header.join(',')}\n${lines.join('\n')}`
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = `单品销售汇总_${dateParams.value.from ?? ''}_${dateParams.value.to ?? ''}.csv`
-  anchor.click()
-  URL.revokeObjectURL(url)
 }
 
 async function onRetry(row: SettlementCompensation, subsidize: boolean): Promise<void> {
