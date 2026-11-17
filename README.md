@@ -123,22 +123,24 @@ Authorization: Bearer <token>
 
 `PUT` 只提交有改动的字段。什么都不改时，页面不发请求，并展示「至少提供推送方式、短信配置或事件配置中的一项」。`GET` 的 `data` 不能原样提交。`defaultPagePath`、`sms.configured`、`sms.secretKeyMasked`、`events[].fields` 和 `updatedAt` 都是只读。
 
-| 字段                  | 含义                                                                                         |
-| --------------------- | -------------------------------------------------------------------------------------------- |
+| 字段                  | 含义                                                                                      |
+| --------------------- | ----------------------------------------------------------------------------------------- |
 | `deliveryMode`        | `wechat` 微信通知、`sms` 短信、`both` 两者。已开启的事件共用。未选择时为 `null`，不会发送 |
-| `defaultPagePath`     | 只读。跳转页面留空时发送使用的小程序页面，并作为输入框占位提示                               |
-| `sms.secretId`        | 腾讯云 SecretId。未配置时为 `null`                                                           |
-| `sms.secretKeyMasked` | 密钥掩码。接口不返回原文。输入留空，或与掩码相同，则不提交 `secretKey`                       |
-| `sms.sdkAppId`        | 短信应用 ID，数字                                                                            |
-| `sms.signName`        | 短信签名                                                                                     |
-| `sms.region`          | 短信地域。留空提交会清空。未保存地域时，发送使用 `ap-guangzhou`                              |
-| `sms.configured`      | 只读。SecretId、密钥、应用 ID 和签名都有值时为 `true`                                        |
-| `events`              | 六个事件，各自有开关                                                                         |
-| `updatedAt`           | 只读。最近一次写入时间                                                                       |
+| `defaultPagePath`     | 只读。跳转页面留空时发送使用的小程序页面，并作为输入框占位提示                            |
+| `sms.secretId`        | 腾讯云 SecretId。未配置时为 `null`                                                        |
+| `sms.secretKeyMasked` | 密钥掩码。接口不返回原文。输入留空，或与掩码相同，则不提交 `secretKey`                    |
+| `sms.sdkAppId`        | 短信应用 ID，数字                                                                         |
+| `sms.signName`        | 短信签名                                                                                  |
+| `sms.region`          | 短信地域。留空提交会清空。未保存地域时，发送使用 `ap-guangzhou`                           |
+| `sms.configured`      | 只读。SecretId、密钥、应用 ID 和签名都有值时为 `true`                                     |
+| `events`              | 八个事件，各自有开关                                                                      |
+| `updatedAt`           | 只读。最近一次写入时间                                                                    |
 
-事件只有这六个：`refund_result` 退款结果，`lucky_return_credited` 幸运返还到账，`withdrawal_outcome` 提现受理/到账/失败，`wallet_credit_withdrawable` 提现账户入账，`wallet_credit_points` 积分账户入账，`wallet_credit_consumption` 消费账户入账。每项含 `enabled`、`wechatTemplateId`、`smsTemplateId`、`pagePath`、`slots`，以及只读的 `fields`。
+事件只有这八个：`order_paid` 订单支付成功，`order_shipped` 订单发货，`refund_result` 退款结果，`lucky_return_credited` 幸运返还到账，`withdrawal_outcome` 提现受理/到账/失败，`wallet_credit_withdrawable` 提现账户入账，`wallet_credit_points` 积分账户入账，`wallet_credit_consumption` 消费账户入账。每项含 `enabled`、`wechatTemplateId`、`smsTemplateId`、`pagePath`、`slots`，以及只读的 `fields`。
 
-`slots` 是 `{ "channel": "wechat" | "sms", "slot", "field" }`。`field` 只能选该事件 `fields` 里的业务数据。页面用中文显示：金额 `amount`、时间 `time`、单号 `orderNo`、状态 `status`，以及该事件另有的积分金额 `pointsAmount`、提现金额 `withdrawableAmount`、打款金额 `payoutAmount`、业务类型 `bizType`。短信空位按列表顺序编成从 1 起不间断的编号。微信空位是模板关键词，例如 `amount1`。这里没有正文输入。
+`slots` 是 `{ "channel": "wechat" | "sms", "slot", "field" }`。`field` 只能选该事件 `fields` 里的业务数据。页面用中文显示：金额 `amount`、时间 `time`、单号 `orderNo`、状态 `status`，以及该事件另有的积分金额 `pointsAmount`、提现金额 `withdrawableAmount`、打款金额 `payoutAmount`、业务类型 `bizType`、商品名称 `goodsName`、快递公司 `courierName`、运单号 `trackingNo`。短信空位按列表顺序编成从 1 起不间断的编号。微信空位是模板关键词，例如 `amount1`。这里没有正文输入。
+
+订单两个事件的 `pagePath` 建议填 `pages/order/list`：微信只能带静态页面路径，订单详情要 `?id=`，配置里写不出具体订单。
 
 `pagePath` 留空表示发送时打开「我的」。填写 `http://` 或 `https://` 时，页面直接提示「跳转页面必须是小程序页面」，不发请求。微信模板 ID 或短信模板 ID 留空表示清空。页面不新增事件或通道，进入页面时请求一次，保存后再用响应刷新，不轮询，也不使用 WebSocket。
 

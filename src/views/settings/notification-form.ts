@@ -60,6 +60,8 @@ export interface NotificationSaveRejected {
 }
 
 const eventLabels: Record<string, string> = {
+  order_paid: '订单支付成功',
+  order_shipped: '订单发货',
   refund_result: '退款结果',
   lucky_return_credited: '幸运返还到账',
   withdrawal_outcome: '提现受理/到账/失败',
@@ -77,6 +79,9 @@ const fieldLabels: Record<string, string> = {
   withdrawableAmount: '提现金额',
   payoutAmount: '打款金额',
   bizType: '业务类型',
+  goodsName: '商品名称',
+  courierName: '快递公司',
+  trackingNo: '运单号',
 }
 
 const deliveryModeLabels: Record<DeliveryMode, string> = {
