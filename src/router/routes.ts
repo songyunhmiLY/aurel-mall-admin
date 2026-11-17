@@ -1,11 +1,10 @@
 import type { RouteRecordRaw } from 'vue-router'
 
 import { paths } from './paths'
+import { simulationEnabled } from './simulation-flag'
 
-// 时间仿真台只在开发模式下通过直链访问：
-// 必须是 dev 构建（import.meta.env.DEV）且显式设置 VITE_SIMULATION_ENABLED=true。
-// 生产构建即使误设该变量也不会注册路由，访问 /simulation 会落到「页面不存在」。
-const simulationEnabled = import.meta.env.DEV && import.meta.env.VITE_SIMULATION_ENABLED === 'true'
+// 仿真台只在非正式环境注册：构建时设置 VITE_SIMULATION_ENABLED=true 才有这个路由。
+// 正式构建不设该变量，访问 /simulation 会落到「页面不存在」。
 
 const adminChildren: RouteRecordRaw[] = [
       {
@@ -189,12 +188,12 @@ const adminChildren: RouteRecordRaw[] = [
 ]
 
 if (simulationEnabled) {
-  // 插在 404 通配之前。不进菜单（menu.ts 不包含本项）。
+  // 插在 404 通配之前。菜单项由 menu.ts 按同一开关添加。
   adminChildren.splice(adminChildren.length - 1, 0, {
     path: 'simulation',
     name: 'simulation',
     component: () => import('@/views/simulation/SimulationView.vue'),
-    meta: { title: '时间仿真' },
+    meta: { title: '仿真演练' },
   })
 }
 

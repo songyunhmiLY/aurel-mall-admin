@@ -26,28 +26,76 @@ export interface SimulationDiff {
   counts: { orders: number; pendingWithdrawals: number; pendingCompensations: number }
 }
 
+export type SimulationAction =
+  | 'set_clock'
+  | 'clear_clock'
+  | 'step'
+  | 'advance'
+  | 'register'
+  | 'purchase'
+  | 'role'
+  | 'reset'
+  | 'reset_data'
+
 export interface SimulationEvent {
   id: string
   at: string
-  action: 'set_clock' | 'clear_clock' | 'step' | 'reset'
+  action: SimulationAction
   detail: {
     from?: string | null
     to?: string | null
     byMinutes?: number
     jobsAttempted?: boolean
+    created?: number
+    steps?: number
   }
   diff: SimulationDiff | null
 }
 
-const ACTION_LABELS: Record<SimulationEvent['action'], string> = {
+export interface SimulationOverview {
+  clock: { now: string; realNow: string; source: 'real' | 'override' }
+  users: { total: number; members: number }
+  orders: { total: number; paid: number; paidAmountFen: number }
+  roles: { cofounders: number; studios: number; opsTeam: number }
+  businessDate: string
+}
+
+export interface SimulatedPurchaseResult {
+  userId: string
+  nickname: string
+  ok: boolean
+  orderId: string | null
+  orderNo: string | null
+  quantity: number
+  payAmountFen: number
+  status: string | null
+  filed: boolean
+  error: string | null
+}
+
+export interface SimulatedRoleResult {
+  userId: string
+  nickname: string
+  role: string
+  ok: boolean
+  payNo: string | null
+  error: string | null
+}
+
+const ACTION_LABELS: Record<SimulationAction, string> = {
   set_clock: '设置时钟',
   clear_clock: '清除覆盖',
   step: '单步推进',
+  advance: '逐日推进',
+  register: '批量注册',
+  purchase: '批量购买',
+  role: '任命角色',
   reset: '清空时间轴',
+  reset_data: '重置业务数据',
 }
 
 export function simulationActionLabel(action: string): string {
-  return ACTION_LABELS[action as SimulationEvent['action']] ?? action
+  return ACTION_LABELS[action as SimulationAction] ?? action
 }
 
 export async function fetchSimulationStatus(): Promise<SimulationStatus> {
@@ -133,6 +181,128 @@ export async function simulationStep(input: {
   const { data } = await http.post<unknown>('/admin/simulation/step', input)
   const record = asRecord(data) ?? {}
   return { status: toStatus(record.status), event: null }
+}
+
+export async function fetchSimulationOverview(): Promise<SimulationOverview> {
+  const { data } = await http.get<unknown>('/admin/simulation/overview')
+  const record = asRecord(data) ?? {}
+  const clock = asRecord(record.clock) ?? {}
+  const users = asRecord(record.users) ?? {}
+  const orders = asRecord(record.orders) ?? {}
+  const roles = asRecord(record.roles) ?? {}
+  const num = (value: unknown): number => (typeof value === 'number' ? value : 0)
+  return {
+    clock: {
+      now: readString(clock.now),
+      realNow: readString(clock.realNow),
+      source: readString(clock.source) === 'override' ? 'override' : 'real',
+    },
+    users: { total: num(users.total), members: num(users.members) },
+    orders: {
+      total: num(orders.total),
+      paid: num(orders.paid),
+      paidAmountFen: num(orders.paidAmountFen),
+    },
+    roles: {
+      cofounders: num(roles.cofounders),
+      studios: num(roles.studios),
+      opsTeam: num(roles.opsTeam),
+    },
+    businessDate: readString(record.businessDate),
+  }
+}
+
+/** 逐业务日推进：跨日公排、跨月核算按各自业务日执行。 */
+export async function simulationAdvance(to: string): Promise<{
+  status: SimulationStatus
+  steps: number
+}> {
+  const { data } = await http.post<unknown>('/admin/simulation/advance', { to })
+  const record = asRecord(data) ?? {}
+  return {
+    status: toStatus(record.status),
+    steps: typeof record.steps === 'number' ? record.steps : 0,
+  }
+}
+
+export async function simulationRegister(input: {
+  count: number
+  nicknamePrefix?: string
+  inviterUserId?: string
+}): Promise<{ created: { id: string; nickname: string }[]; inviterId: string }> {
+  const { data } = await http.post<unknown>('/admin/simulation/register', input)
+  const record = asRecord(data) ?? {}
+  const rows = Array.isArray(record.created) ? record.created : []
+  return {
+    created: rows.map((item) => {
+      const row = asRecord(item) ?? {}
+      return { id: readString(row.id), nickname: readString(row.nickname) }
+    }),
+    inviterId: readString(record.inviterId),
+  }
+}
+
+export async function simulationPurchase(input: {
+  userIds?: string[]
+  count?: number
+  productId?: string
+  quantityMin?: number
+  quantityMax?: number
+}): Promise<{
+  product: { id: string; name: string; priceFen: number }
+  results: SimulatedPurchaseResult[]
+}> {
+  const { data } = await http.post<unknown>('/admin/simulation/purchase', input)
+  const record = asRecord(data) ?? {}
+  const product = asRecord(record.product) ?? {}
+  const rows = Array.isArray(record.results) ? record.results : []
+  return {
+    product: {
+      id: readString(product.id),
+      name: readString(product.name),
+      priceFen: typeof product.priceFen === 'number' ? product.priceFen : 0,
+    },
+    results: rows.map((item) => {
+      const row = asRecord(item) ?? {}
+      return {
+        userId: readString(row.userId),
+        nickname: readString(row.nickname),
+        ok: row.ok === true,
+        orderId: typeof row.orderId === 'string' ? row.orderId : null,
+        orderNo: typeof row.orderNo === 'string' ? row.orderNo : null,
+        quantity: typeof row.quantity === 'number' ? row.quantity : 0,
+        payAmountFen: typeof row.payAmountFen === 'number' ? row.payAmountFen : 0,
+        status: typeof row.status === 'string' ? row.status : null,
+        filed: row.filed === true,
+        error: typeof row.error === 'string' ? row.error : null,
+      }
+    }),
+  }
+}
+
+export async function simulationRole(
+  userId: string,
+  role: 'cofounder' | 'studio' | 'ops_team',
+): Promise<SimulatedRoleResult> {
+  const { data } = await http.post<unknown>('/admin/simulation/role', { userId, role })
+  const row = asRecord(data) ?? {}
+  return {
+    userId: readString(row.userId),
+    nickname: readString(row.nickname),
+    role: readString(row.role),
+    ok: row.ok === true,
+    payNo: typeof row.payNo === 'string' ? row.payNo : null,
+    error: typeof row.error === 'string' ? row.error : null,
+  }
+}
+
+/** 清空业务数据：订单、钱包、树、报单、分红、角色，保留商品与系统配置。 */
+export async function resetSimulationData(): Promise<{ removedUsers: number }> {
+  const { data } = await http.post<unknown>('/admin/simulation/reset-data')
+  const record = asRecord(data) ?? {}
+  return {
+    removedUsers: typeof record.removedUsers === 'number' ? record.removedUsers : 0,
+  }
 }
 
 export async function resetSimulationTimeline(): Promise<SimulationStatus> {

@@ -26,6 +26,7 @@ import {
 } from '@element-plus/icons-vue'
 
 import { paths } from './paths'
+import { simulationEnabled } from './simulation-flag'
 
 /**
  * 侧边栏只放一级分组，组内页面在页面顶部用 tab 切换。
@@ -275,6 +276,26 @@ export const adminSections: AdminMenuSection[] = [
       },
     ],
   },
+  // 仿真演练只在非正式环境出现：正式构建不设 VITE_SIMULATION_ENABLED，整组菜单都不存在。
+  ...(simulationEnabled
+    ? [
+        {
+          key: 'simulation',
+          title: '仿真演练',
+          icon: Setting,
+          permission: 'simulation',
+          tabs: [
+            {
+              key: 'simulation',
+              title: '时间仿真台',
+              path: paths.simulation,
+              permission: 'simulation',
+              icon: Setting,
+            },
+          ],
+        },
+      ]
+    : []),
 ]
 
 /** 当前路径落在哪个分组。用于侧边栏高亮和页面顶部 tab。 */

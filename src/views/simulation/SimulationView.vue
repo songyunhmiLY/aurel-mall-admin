@@ -2,18 +2,24 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
-import {
-  apiErrorMessage,
-} from '@/api/http'
+import { apiErrorMessage } from '@/api/http'
 import {
   clearSimulationClock,
+  fetchSimulationOverview,
   fetchSimulationStatus,
   fetchSimulationTimeline,
+  resetSimulationData,
   resetSimulationTimeline,
   setSimulationClock,
   simulationActionLabel,
+  simulationAdvance,
+  simulationPurchase,
+  simulationRegister,
+  simulationRole,
   simulationStep,
+  type SimulatedPurchaseResult,
   type SimulationEvent,
+  type SimulationOverview,
   type SimulationStatus,
 } from '@/api/simulation'
 
@@ -22,11 +28,28 @@ const busy = ref(false)
 const loadError = ref('')
 const actionError = ref('')
 const status = ref<SimulationStatus | null>(null)
+const overview = ref<SimulationOverview | null>(null)
 const events = ref<SimulationEvent[]>([])
 
 const clockInput = ref('')
 const stepTargetInput = ref('')
 const stepMinutesInput = ref<number | undefined>(undefined)
+const advanceTarget = ref<Date | null>(null)
+
+const registerCount = ref(20)
+const registerPrefix = ref('仿真用户')
+const registerInviter = ref('')
+
+const buyUserIds = ref('')
+const buyCount = ref<number | undefined>(undefined)
+const buyProductId = ref('')
+const buyMin = ref(1)
+const buyMax = ref(1)
+const buyResults = ref<SimulatedPurchaseResult[]>([])
+
+const roleUserId = ref('')
+const roleName = ref<'cofounder' | 'studio' | 'ops_team'>('cofounder')
+const roleMessage = ref('')
 
 const overrideActive = computed(() => status.value?.clock.source === 'override')
 const clockAllowed = computed(() => status.value?.clock.allowed === true)
@@ -39,17 +62,22 @@ async function load(): Promise<void> {
   loading.value = true
   loadError.value = ''
   try {
-    const [nextStatus, timeline] = await Promise.all([
+    const [nextStatus, timeline, nextOverview] = await Promise.all([
       fetchSimulationStatus(),
       fetchSimulationTimeline(),
+      fetchSimulationOverview(),
     ])
     status.value = nextStatus
     events.value = timeline
+    overview.value = nextOverview
     if (nextStatus.clock.override) {
       clockInput.value = nextStatus.clock.override
     }
   } catch (error) {
-    loadError.value = apiErrorMessage(error, '读取仿真状态失败（后端可能未开启 SIMULATION_ENABLED）')
+    loadError.value = apiErrorMessage(
+      error,
+      '读取仿真状态失败（后端可能未开启 SIMULATION_ENABLED）',
+    )
   } finally {
     loading.value = false
   }
@@ -76,22 +104,26 @@ async function run(action: () => Promise<void>): Promise<void> {
   }
 }
 
+async function reloadTimeline(): Promise<void> {
+  try {
+    const [timeline, nextOverview] = await Promise.all([
+      fetchSimulationTimeline(),
+      fetchSimulationOverview(),
+    ])
+    events.value = timeline
+    overview.value = nextOverview
+    if (status.value) {
+      status.value.timelineCount = timeline.length
+    }
+  } catch {
+    // 时间轴读取失败不阻塞主流程，下一次操作会再试。
+  }
+}
+
 function applyClock(next: SimulationStatus): void {
   status.value = next
   if (next.clock.override) {
     clockInput.value = next.clock.override
-  }
-  void reloadTimeline()
-}
-
-async function reloadTimeline(): Promise<void> {
-  try {
-    events.value = await fetchSimulationTimeline()
-    if (status.value) {
-      status.value.timelineCount = events.value.length
-    }
-  } catch {
-    // 时间轴读取失败不阻塞主流程，下一次操作会再试。
   }
 }
 
@@ -102,6 +134,7 @@ function onSetClock(): void {
   }
   void run(async () => {
     applyClock(await setSimulationClock(new Date(clockInput.value).toISOString()))
+    await reloadTimeline()
     ElMessage.success('仿真时钟已设置')
   })
 }
@@ -109,7 +142,24 @@ function onSetClock(): void {
 function onClearClock(): void {
   void run(async () => {
     applyClock(await clearSimulationClock())
+    await reloadTimeline()
     ElMessage.success('已清除时钟覆盖，恢复真实时间')
+  })
+}
+
+/** 逐业务日推进：跨日公排、跨月核算按各自业务日执行。 */
+function onAdvance(): void {
+  if (!requireOverride()) return
+  if (!advanceTarget.value) {
+    actionError.value = '请选择要推进到的时刻'
+    return
+  }
+  void run(async () => {
+    const target = advanceTarget.value as Date
+    const result = await simulationAdvance(target.toISOString())
+    applyClock(result.status)
+    await reloadTimeline()
+    ElMessage.success(`已推进到 ${target.toLocaleString()}，期间执行了 ${result.steps} 次到期任务`)
   })
 }
 
@@ -124,7 +174,7 @@ function onStep(): void {
   void run(async () => {
     const payload = hasTarget
       ? { to: new Date(stepTargetInput.value).toISOString() }
-      : { byMinutes: stepMinutesInput.value }
+      : { byMinutes: stepMinutesInput.value as number }
     const next = await simulationStep(payload)
     status.value = next.status
     if (next.status.clock.override) {
@@ -146,17 +196,101 @@ function onCatchUp(): void {
   })
 }
 
-function onReset(): void {
+function onRegister(): void {
+  void run(async () => {
+    const inviter = registerInviter.value.trim()
+    const result = await simulationRegister({
+      count: registerCount.value,
+      nicknamePrefix: registerPrefix.value.trim() || undefined,
+      ...(inviter ? { inviterUserId: inviter } : {}),
+    })
+    await reloadTimeline()
+    ElMessage.success(`已注册 ${result.created.length} 人，挂在邀请人 ${result.inviterId} 下`)
+  })
+}
+
+function onPurchase(): void {
+  void run(async () => {
+    const ids = buyUserIds.value
+      .split(/[,，\s]+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+    const productId = buyProductId.value.trim()
+    const result = await simulationPurchase({
+      ...(ids.length > 0 ? { userIds: ids } : { count: buyCount.value ?? 1 }),
+      ...(productId ? { productId } : {}),
+      quantityMin: buyMin.value,
+      quantityMax: buyMax.value,
+    })
+    buyResults.value = result.results
+    await reloadTimeline()
+    const ok = result.results.filter((item) => item.ok).length
+    ElMessage.success(`已用「${result.product.name}」下了 ${ok} 单`)
+  })
+}
+
+function onRole(): void {
+  const userId = roleUserId.value.trim()
+  if (!/^\d+$/.test(userId)) {
+    actionError.value = '请填写会员编号（数字）'
+    return
+  }
+  void run(async () => {
+    const result = await simulationRole(userId, roleName.value)
+    roleMessage.value = result.ok
+      ? `${result.nickname || result.userId} 已成为 ${roleLabel(result.role)}${
+          result.payNo ? `，付款单号 ${result.payNo}` : ''
+        }`
+      : (result.error ?? '任命失败')
+    await reloadTimeline()
+    if (result.ok) ElMessage.success(roleMessage.value)
+  })
+}
+
+function onResetTimeline(): void {
   void ElMessageBox.confirm('清空时间轴不会影响业务数据，确定继续？', '清空时间轴', {
     confirmButtonText: '清空',
     cancelButtonText: '取消',
     type: 'warning',
-  }).then(() => {
-    void run(async () => {
-      applyClock(await resetSimulationTimeline())
-      ElMessage.success('时间轴已清空')
+  })
+    .then(() => {
+      void run(async () => {
+        applyClock(await resetSimulationTimeline())
+        await reloadTimeline()
+        ElMessage.success('时间轴已清空')
+      })
     })
-  }).catch(() => {})
+    .catch(() => {})
+}
+
+function onResetData(): void {
+  void ElMessageBox.prompt(
+    '会清空订单、支付、钱包、市场树、报单、分红、角色与全部会员（保留根账户）。商品与系统配置不受影响。请输入「重置」确认。',
+    '重置业务数据',
+    {
+      confirmButtonText: '重置',
+      cancelButtonText: '取消',
+      type: 'error',
+      inputPlaceholder: '输入 重置',
+      inputValidator: (value) => value === '重置' || '请输入「重置」',
+    },
+  )
+    .then(() => {
+      void run(async () => {
+        const result = await resetSimulationData()
+        buyResults.value = []
+        await reloadTimeline()
+        ElMessage.success(`已清空业务数据，删除 ${result.removedUsers} 个会员`)
+      })
+    })
+    .catch(() => {})
+}
+
+function roleLabel(role: string): string {
+  if (role === 'cofounder') return '联合创始人'
+  if (role === 'studio') return '工作室'
+  if (role === 'ops_team') return '运营中心'
+  return role
 }
 
 function fmt(value: number): string {
@@ -165,6 +299,10 @@ function fmt(value: number): string {
 
 function fen(value: number): string {
   return `${fmt(value)} 分（${(value / 100).toFixed(2)} 元）`
+}
+
+function yuan(value: number): string {
+  return `${(value / 100).toFixed(2)} 元`
 }
 
 const walletDiffRows = computed(() => {
@@ -191,12 +329,56 @@ const walletDiffRows = computed(() => {
       class="page-alert"
       type="warning"
       :closable="false"
-      title="时间仿真台（仅测试环境）"
-      description="此页面不在菜单中，仅通过直链访问。正式环境后端接口一律 403。单步推进只触发已到期的定时任务并记录账务差分，不模拟任何分销行为。"
+      title="仿真演练（仅非正式环境）"
+      description="造数走真实下单、支付、报单、入座与角色开通，结果可在会员、订单、财务、分红页面直接查看。正式环境后端全部接口 403，前端也不注册本页。"
       show-icon
     />
 
-    <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" class="page-alert" />
+    <el-alert
+      v-if="loadError"
+      type="error"
+      :title="loadError"
+      show-icon
+      :closable="false"
+      class="page-alert"
+    />
+
+    <el-card v-loading="loading" shadow="never" class="block">
+      <template #header>
+        仿真总览
+        <span class="header-note">业务日 {{ overview?.businessDate ?? '-' }}</span>
+      </template>
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="stat__label">注册用户</div>
+          <div class="stat__value">{{ overview?.users.total ?? 0 }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">会员（已入座）</div>
+          <div class="stat__value">{{ overview?.users.members ?? 0 }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">订单 / 已支付</div>
+          <div class="stat__value">
+            {{ overview?.orders.total ?? 0 }} / {{ overview?.orders.paid ?? 0 }}
+          </div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">已支付金额</div>
+          <div class="stat__value">{{ yuan(overview?.orders.paidAmountFen ?? 0) }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">联合创始人</div>
+          <div class="stat__value">{{ overview?.roles.cofounders ?? 0 }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">工作室 / 运营中心</div>
+          <div class="stat__value">
+            {{ overview?.roles.studios ?? 0 }} / {{ overview?.roles.opsTeam ?? 0 }}
+          </div>
+        </div>
+      </div>
+    </el-card>
 
     <el-card v-loading="loading" shadow="never" class="block">
       <template #header>当前时钟</template>
@@ -211,17 +393,36 @@ const walletDiffRows = computed(() => {
             {{ clockAllowed ? '允许' : '禁止' }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="当前业务时间">{{ status?.clock.now ?? '-' }}</el-descriptions-item>
-        <el-descriptions-item label="覆盖值">{{ status?.clock.override ?? '未设置' }}</el-descriptions-item>
+        <el-descriptions-item label="当前业务时间">{{
+          status?.clock.now ?? '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="覆盖值">{{
+          status?.clock.override ?? '未设置'
+        }}</el-descriptions-item>
       </el-descriptions>
 
-      <el-form label-width="120px" class="clock-form">
-        <el-form-item label="设置仿真起点">
-          <el-input v-model="clockInput" placeholder="ISO 时间，如 2026-11-14T08:00:00.000Z" clearable>
+      <el-form label-width="130px" class="clock-form">
+        <el-form-item label="仿真起点">
+          <el-input
+            v-model="clockInput"
+            placeholder="ISO 时间，如 2026-01-01T00:00:00.000Z"
+            clearable
+          >
             <template #append>
               <el-button :disabled="busy" @click="onSetClock">设置</el-button>
             </template>
           </el-input>
+        </el-form-item>
+        <el-form-item label="逐日推进到">
+          <el-date-picker
+            v-model="advanceTarget"
+            type="datetime"
+            placeholder="选择目标时刻（只能往后）"
+            class="step-input"
+          />
+          <el-button type="primary" :disabled="busy || !overrideActive" @click="onAdvance">
+            推进（逐日执行公排与核算）
+          </el-button>
         </el-form-item>
         <el-form-item label="单步推进">
           <el-input
@@ -236,15 +437,122 @@ const walletDiffRows = computed(() => {
             placeholder="分钟数"
             class="step-input"
           />
-          <el-button type="primary" :disabled="busy || !overrideActive" @click="onStep">推进并触发到期任务</el-button>
+          <el-button :disabled="busy || !overrideActive" @click="onStep">推进一次</el-button>
           <el-button :disabled="busy || !overrideActive" @click="onCatchUp">追平现实时间</el-button>
         </el-form-item>
-        <el-form-item label="其他">
+        <el-form-item label="时钟">
           <el-button :disabled="busy" @click="onClearClock">清除时钟覆盖</el-button>
-          <el-button :disabled="busy" type="danger" plain @click="onReset">清空时间轴</el-button>
         </el-form-item>
       </el-form>
       <el-alert v-if="actionError" type="error" :title="actionError" show-icon :closable="false" />
+    </el-card>
+
+    <el-card shadow="never" class="block">
+      <template #header>造数动作</template>
+      <el-tabs>
+        <el-tab-pane label="批量注册">
+          <el-form label-width="110px" class="action-form">
+            <el-form-item label="人数">
+              <el-input-number v-model="registerCount" :min="1" :max="200" />
+            </el-form-item>
+            <el-form-item label="昵称前缀">
+              <el-input v-model="registerPrefix" placeholder="默认「仿真用户」" />
+            </el-form-item>
+            <el-form-item label="邀请人编号">
+              <el-input
+                v-model="registerInviter"
+                placeholder="留空挂到根账户；必须是已有邀请码的会员"
+              />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :disabled="busy" @click="onRegister">注册</el-button>
+            </el-form-item>
+          </el-form>
+          <p class="tip">
+            新用户是普通注册用户，没有邀请码；下过创业专区订单并完成支付后才会入座成为会员。
+          </p>
+        </el-tab-pane>
+
+        <el-tab-pane label="批量购买创业专区">
+          <el-form label-width="110px" class="action-form">
+            <el-form-item label="指定用户">
+              <el-input
+                v-model="buyUserIds"
+                type="textarea"
+                :rows="2"
+                placeholder="会员编号，逗号或换行分隔；留空则按下面的人数随机取已入座会员"
+              />
+            </el-form-item>
+            <el-form-item label="随机人数">
+              <el-input-number v-model="buyCount" :min="1" :max="200" placeholder="留空按 1 人" />
+            </el-form-item>
+            <el-form-item label="商品编号">
+              <el-input v-model="buyProductId" placeholder="留空取创业专区第一件上架商品" />
+            </el-form-item>
+            <el-form-item label="数量区间">
+              <el-input-number v-model="buyMin" :min="1" :max="99" />
+              <span class="range-sep">至</span>
+              <el-input-number v-model="buyMax" :min="1" :max="99" />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :disabled="busy" @click="onPurchase">
+                下单并模拟支付
+              </el-button>
+            </el-form-item>
+          </el-form>
+          <el-table
+            v-if="buyResults.length"
+            :data="buyResults"
+            size="small"
+            border
+            class="result-table"
+          >
+            <el-table-column prop="nickname" label="用户" width="140" />
+            <el-table-column prop="quantity" label="数量" width="80" />
+            <el-table-column label="实付" width="120">
+              <template #default="{ row }">{{ yuan(row.payAmountFen) }}</template>
+            </el-table-column>
+            <el-table-column label="订单状态" width="120">
+              <template #default="{ row }">{{ row.status ?? '-' }}</template>
+            </el-table-column>
+            <el-table-column label="当场报单" width="100">
+              <template #default="{ row }">
+                <el-tag :type="row.filed ? 'success' : 'info'" size="small">
+                  {{ row.filed ? '已报单' : '未报单' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="结果" min-width="200">
+              <template #default="{ row }">
+                <span v-if="row.ok">{{ row.orderNo }}</span>
+                <span v-else class="error-text">{{ row.error }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+
+        <el-tab-pane label="任命角色">
+          <el-form label-width="110px" class="action-form">
+            <el-form-item label="会员编号">
+              <el-input v-model="roleUserId" placeholder="必须是已入座会员" />
+            </el-form-item>
+            <el-form-item label="角色">
+              <el-select v-model="roleName" class="role-select">
+                <el-option label="联合创始人（付费开通）" value="cofounder" />
+                <el-option label="工作室（管理端指定）" value="studio" />
+                <el-option label="运营中心（管理端指定）" value="ops_team" />
+              </el-select>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :disabled="busy" @click="onRole">任命</el-button>
+            </el-form-item>
+          </el-form>
+          <p v-if="roleMessage" class="tip">{{ roleMessage }}</p>
+          <p class="tip">
+            联合创始人走付费开通并产生沙箱付款记录；工作室与运营中心按管理端指定入籍，不产生付款。
+          </p>
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
 
     <el-card shadow="never" class="block">
@@ -257,21 +565,37 @@ const walletDiffRows = computed(() => {
         </el-table-column>
         <el-table-column label="动作" width="110">
           <template #default="{ row }">
-            <el-tag :type="row.action === 'step' ? 'primary' : 'info'" size="small">
+            <el-tag
+              :type="row.action === 'step' || row.action === 'advance' ? 'primary' : 'info'"
+              size="small"
+            >
               {{ simulationActionLabel(row.action) }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="详情" min-width="260">
           <template #default="{ row }">
-            <span v-if="row.action === 'set_clock'">{{ row.detail.from }} → {{ row.detail.to }}</span>
+            <span v-if="row.action === 'set_clock'"
+              >{{ row.detail.from }} → {{ row.detail.to }}</span
+            >
             <span v-else-if="row.action === 'step'">
               {{ row.detail.from }} → {{ row.detail.to }}
               <el-tag v-if="row.detail.byMinutes" size="small" type="info" class="ml-4">
                 +{{ row.detail.byMinutes }} 分钟
               </el-tag>
             </span>
-            <span v-else-if="row.action === 'clear_clock'">从 {{ row.detail.from }} 恢复真实时间</span>
+            <span v-else-if="row.action === 'advance'">
+              {{ row.detail.from }} → {{ row.detail.to }}（{{ row.detail.steps }} 次到期任务）
+            </span>
+            <span v-else-if="row.action === 'register'">新增 {{ row.detail.created }} 个用户</span>
+            <span v-else-if="row.action === 'purchase'">成功下单 {{ row.detail.created }} 笔</span>
+            <span v-else-if="row.action === 'role'">任命 {{ row.detail.created }} 次</span>
+            <span v-else-if="row.action === 'reset_data'">
+              清空业务数据，删除 {{ row.detail.created }} 个会员
+            </span>
+            <span v-else-if="row.action === 'clear_clock'"
+              >从 {{ row.detail.from }} 恢复真实时间</span
+            >
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -284,8 +608,9 @@ const walletDiffRows = computed(() => {
         <el-table-column label="差分摘要" min-width="240">
           <template #default="{ row }">
             <span v-if="row.diff">
-              积分 {{ fmt(row.diff.wallet.points) }} / 可提现 {{ fmt(row.diff.wallet.withdrawable) }} /
-              消费金 {{ fmt(row.diff.wallet.consumption) }} / 现金入 {{ fmt(row.diff.cash.inflow) }} /
+              积分 {{ fmt(row.diff.wallet.points) }} / 可提现
+              {{ fmt(row.diff.wallet.withdrawable) }} / 消费金
+              {{ fmt(row.diff.wallet.consumption) }} / 现金入 {{ fmt(row.diff.cash.inflow) }} /
               现金出 {{ fmt(row.diff.cash.outflow) }} / 订单 {{ fmt(row.diff.counts.orders) }}
             </span>
             <span v-else>-</span>
@@ -302,6 +627,18 @@ const walletDiffRows = computed(() => {
         </el-descriptions-item>
       </el-descriptions>
     </el-card>
+
+    <el-card shadow="never" class="block danger-block">
+      <template #header>危险操作</template>
+      <el-button :disabled="busy" type="danger" plain @click="onResetTimeline"
+        >清空时间轴</el-button
+      >
+      <el-button :disabled="busy" type="danger" @click="onResetData">重置业务数据</el-button>
+      <p class="tip">
+        重置会清空订单、支付、钱包、市场树、报单、分红、角色与全部会员（根账户与商品保留）。
+        操作不可恢复，请只在演练库使用。
+      </p>
+    </el-card>
   </div>
 </template>
 
@@ -312,22 +649,81 @@ const walletDiffRows = computed(() => {
   gap: 16px;
 }
 
-.page-alert {
-  width: 100%;
-}
-
+.page-alert,
 .block {
   width: 100%;
 }
 
+.header-note {
+  margin-left: 12px;
+  color: var(--aurel-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.stat {
+  padding: 12px 16px;
+  background: var(--aurel-surface);
+  border: 1px solid var(--aurel-line);
+  border-radius: 10px;
+}
+
+.stat__label {
+  color: var(--aurel-muted);
+  font-size: 12px;
+}
+
+.stat__value {
+  margin-top: 6px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
 .clock-form {
   margin-top: 16px;
-  max-width: 760px;
+  max-width: 900px;
 }
 
 .step-input {
   width: 280px;
   margin-right: 12px;
+}
+
+.action-form {
+  max-width: 760px;
+}
+
+.range-sep {
+  margin: 0 8px;
+  color: var(--aurel-muted);
+}
+
+.role-select {
+  width: 260px;
+}
+
+.result-table {
+  margin-top: 12px;
+}
+
+.tip {
+  margin-top: 8px;
+  color: var(--aurel-muted);
+  font-size: 12px;
+}
+
+.error-text {
+  color: #d14343;
+}
+
+.danger-block {
+  border-color: #f0c9c9;
 }
 
 .ml-4 {
