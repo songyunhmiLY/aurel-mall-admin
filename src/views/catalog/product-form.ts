@@ -18,6 +18,10 @@ export interface ProductDraft {
   priceYuan: string
   pvYuan: string
   categoryId: string
+  /** 商城混排顺序。数值小的排前面，同值按创建时间倒序。 */
+  sortOrder: string
+  /** 是否出现在小程序首页商品流。 */
+  homeVisible: boolean
 }
 
 export const zoneOptions: { value: ProductZone; label: string }[] = [
@@ -59,6 +63,8 @@ export function createDraft(): ProductDraft {
     priceYuan: '',
     pvYuan: '',
     categoryId: '',
+    sortOrder: '0',
+    homeVisible: false,
   }
 }
 
@@ -79,6 +85,8 @@ export function draftFromProduct(product: Product): ProductDraft {
     priceYuan: fenToYuan(product.priceFen),
     pvYuan: product.pvFen == null ? '' : fenToYuan(product.pvFen),
     categoryId: product.categoryId,
+    sortOrder: String(product.sortOrder),
+    homeVisible: product.homeVisible,
   }
 }
 
@@ -94,6 +102,8 @@ export function buildProductCreate(draft: ProductDraft): ProductCreateBody {
     // 运费并入售价，不再单独体现。成本价不录入，库内字段保留并恒为 0。
     freightFen: 0,
     status: draft.status,
+    sortOrder: readSortOrder(draft.sortOrder),
+    homeVisible: draft.homeVisible,
   }
   if (draft.zone === 'mall') {
     body.priceFen = readPriceFen(draft.priceYuan)
@@ -114,6 +124,8 @@ export function buildProductUpdate(draft: ProductDraft): ProductUpdateBody {
     // 运费并入售价，不再单独体现。成本价不录入，库内字段保留并恒为 0。
     freightFen: 0,
     status: draft.status,
+    sortOrder: readSortOrder(draft.sortOrder),
+    homeVisible: draft.homeVisible,
   }
   if (draft.zone === 'mall') {
     body.priceFen = readPriceFen(draft.priceYuan)
@@ -155,6 +167,16 @@ function readShared(draft: ProductDraft): {
     coverUrl: coverUrl || null,
     imageUrls,
   }
+}
+
+function readSortOrder(input: string): number {
+  const text = input.trim() === '' ? '0' : input.trim()
+  if (!/^-?\d+$/.test(text)) throw new Error('排序请填写整数')
+  const value = Number(text)
+  if (!Number.isSafeInteger(value) || value < -1_000_000 || value > 1_000_000) {
+    throw new Error('排序超出范围（-1000000 ~ 1000000）')
+  }
+  return value
 }
 
 function readPriceFen(input: string): number {

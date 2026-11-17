@@ -66,6 +66,8 @@ function applyDraft(next: ProductDraft): void {
   draft.priceYuan = next.priceYuan
   draft.pvYuan = next.pvYuan
   draft.categoryId = next.categoryId
+  draft.sortOrder = next.sortOrder
+  draft.homeVisible = next.homeVisible
 }
 
 async function load(): Promise<void> {
@@ -166,6 +168,18 @@ async function save(): Promise<void> {
               :value="item.value"
             />
           </el-select>
+        </el-form-item>
+        <el-form-item label="商城排序">
+          <el-input v-model="draft.sortOrder" placeholder="0" />
+          <p class="field-hint">
+            数值小的排在商城前面，同值按创建时间倒序。创业专区与会员商城共用这一套顺序。
+          </p>
+        </el-form-item>
+        <el-form-item label="首页展示">
+          <el-switch v-model="draft.homeVisible" />
+          <p class="field-hint">
+            打开后出现在小程序首页商品流，顺序同上。下架商品即使打开也不会展示。
+          </p>
         </el-form-item>
         <el-form-item v-if="draft.zone === 'startup'" label="价格">
           <el-alert

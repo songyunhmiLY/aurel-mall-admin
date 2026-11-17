@@ -1,5 +1,13 @@
 import { ApiError, http } from './http'
-import { asRecord, readId, readInteger, readNullableString, readPage, readString } from './json'
+import {
+  asRecord,
+  readBoolean,
+  readId,
+  readInteger,
+  readNullableString,
+  readPage,
+  readString,
+} from './json'
 
 export type ProductZone = 'startup' | 'mall'
 export type ProductStatus = 'draft' | 'on' | 'off'
@@ -30,6 +38,10 @@ export interface Product {
   /** 库存只留档：不参与下单、结算与页面展示。 */
   stockQuantity: number
   status: string
+  /** 商城混排顺序，管理端配置。数值小的排前面。 */
+  sortOrder: number
+  /** 是否出现在小程序首页商品流。 */
+  homeVisible: boolean
   skuId: string
   categoryId: string
   categoryName: string
@@ -61,6 +73,8 @@ export interface ProductCreateBody {
   costFen?: number | null
   categoryId?: string | null
   status: ProductStatus
+  sortOrder?: number
+  homeVisible?: boolean
 }
 
 /** 与 UpdateProductDto 一致。不能带 zone。运费并入售价，固定 0。 */
@@ -76,6 +90,8 @@ export interface ProductUpdateBody {
   costFen?: number | null
   categoryId?: string | null
   status: ProductStatus
+  sortOrder?: number
+  homeVisible?: boolean
 }
 
 export interface ProductQuery {
@@ -125,6 +141,20 @@ export async function setProductShelf(id: string, status: 'on' | 'off'): Promise
   return readProduct(data)
 }
 
+export async function setProductSort(id: string, sortOrder: number): Promise<Product> {
+  const { data } = await http.put<unknown>(`${productsPath}/${encodeURIComponent(id)}/sort`, {
+    sortOrder,
+  })
+  return readProduct(data)
+}
+
+export async function setProductHome(id: string, homeVisible: boolean): Promise<Product> {
+  const { data } = await http.put<unknown>(`${productsPath}/${encodeURIComponent(id)}/home`, {
+    homeVisible,
+  })
+  return readProduct(data)
+}
+
 export async function fetchMallCategories(): Promise<MallCategory[]> {
   const { data } = await http.get<unknown>(categoriesPath)
   if (!Array.isArray(data)) throw new ApiError('分类响应无效', 500)
@@ -164,6 +194,8 @@ export function readProduct(data: unknown): Product {
     costFen,
     stockQuantity,
     status: readString(record.status),
+    sortOrder: readInteger(record.sortOrder) ?? 0,
+    homeVisible: readBoolean(record.homeVisible) === true,
     skuId: readId(record.skuId),
     categoryId: readId(record.categoryId),
     categoryName: category ? readString(category.name) : '',

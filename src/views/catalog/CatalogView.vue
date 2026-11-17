@@ -7,7 +7,9 @@ import { fenToYuan } from '@/api/money'
 import {
   fetchMallCategories,
   fetchProducts,
+  setProductHome,
   setProductShelf,
+  setProductSort,
   type MallCategory,
   type Product,
 } from '@/api/products'
@@ -121,6 +123,32 @@ async function toggleShelf(row: Product): Promise<void> {
   }
 }
 
+async function onSortChange(row: Product, value: number | undefined): Promise<void> {
+  const next = typeof value === 'number' ? value : 0
+  if (next === row.sortOrder) return
+  try {
+    await setProductSort(row.id, next)
+    ElMessage.success('已更新排序')
+    await load()
+  } catch (error) {
+    loadError.value = apiErrorMessage(error, '更新排序失败')
+    await load()
+  }
+}
+
+async function onHomeChange(row: Product, value: string | number | boolean): Promise<void> {
+  const next = value === true
+  if (next === row.homeVisible) return
+  try {
+    await setProductHome(row.id, next)
+    ElMessage.success(next ? '已放入首页商品流' : '已从首页移除')
+    await load()
+  } catch (error) {
+    loadError.value = apiErrorMessage(error, '更新首页展示失败')
+    await load()
+  }
+}
+
 function priceText(row: Product): string {
   return `${fenToYuan(row.priceFen)} 元`
 }
@@ -138,7 +166,8 @@ function pvText(row: Product): string {
     </header>
     <p class="hint">
       每个商品只有一个规格。创业专区售价由系统锁定，不能在这里填写。会员商城的 PV 按分保存，1 PV = 1
-      元，与售价分开。
+      元，与售价分开。排序与首页开关直接在这一行改，改完立即生效：排序数值小的排在商城前面，
+      打开首页开关的商品才会出现在小程序首页商品流。
     </p>
     <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" />
     <el-alert v-if="notice" type="warning" :title="notice" show-icon @close="notice = ''" />
@@ -189,6 +218,26 @@ function pvText(row: Product): string {
       </el-table-column>
       <el-table-column label="分类" min-width="120">
         <template #default="{ row }">{{ row.categoryName || '—' }}</template>
+      </el-table-column>
+      <el-table-column label="排序" width="140">
+        <template #default="{ row }">
+          <el-input-number
+            :model-value="row.sortOrder"
+            :min="-1000000"
+            :max="1000000"
+            size="small"
+            controls-position="right"
+            @change="onSortChange(row, $event)"
+          />
+        </template>
+      </el-table-column>
+      <el-table-column label="首页" width="90">
+        <template #default="{ row }">
+          <el-switch
+            :model-value="row.homeVisible"
+            @change="onHomeChange(row, $event)"
+          />
+        </template>
       </el-table-column>
       <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
