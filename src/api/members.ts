@@ -10,13 +10,29 @@ export interface MemberSummary {
   inviteCode: string
   member: boolean
   kycVerified: boolean
-  /** 已支付且未关闭订单的微信实付合计（分），含联合创始人开通支付。 */
-  paidWechatFen: number
+  /** 创业专区微信实付合计（分）。 */
+  startupPaidFen: number
+  /** 创业专区下单总金额（应付，含运费，分）。 */
+  startupPayableFen: number
+  /** 商城专区微信实付合计（分）。 */
+  mallPaidFen: number
+  /** 商城专区下单总金额（应付，分）。 */
+  mallPayableFen: number
   startupPaidOrders: number
   mallPaidOrders: number
   startupPaidUnits: number
   mallPaidUnits: number
+  /** 可提现账户余额（分，含冻结）。 */
+  withdrawableBalanceFen: number
+  /** 积分账户余额（分，含冻结）。 */
+  pointsBalanceFen: number
+  /** 消费金账户余额（分，含冻结）。 */
+  consumptionBalanceFen: number
+  /** 累计提现金额（分，已打款结算单合计）。 */
+  totalWithdrawnFen: number
   inviteeCount: number
+  /** 身份：normal/member + cofounder/studio/ops_team 叠加。 */
+  identities: string[]
   createdAt: string
   updatedAt: string
 }
@@ -85,6 +101,34 @@ export function memberFlagLabel(member: boolean): string {
   return member ? '会员' : '非会员'
 }
 
+/** 身份编码 → 显示名。 */
+export function identityLabel(identity: string): string {
+  if (identity === 'normal') return '普通'
+  if (identity === 'member') return '会员'
+  if (identity === 'cofounder') return '联创'
+  if (identity === 'studio') return '工作室'
+  if (identity === 'ops_team') return '运营团队'
+  return identity
+}
+
+/** 身份标签颜色。 */
+export function identityTagType(
+  identity: string,
+): 'info' | 'primary' | 'warning' | 'success' | 'danger' {
+  if (identity === 'normal') return 'info'
+  if (identity === 'member') return 'primary'
+  if (identity === 'cofounder') return 'warning'
+  if (identity === 'studio') return 'success'
+  return 'danger'
+}
+
+function readIdentities(record: Record<string, unknown> | null): string[] {
+  const value = record?.identities
+  if (!Array.isArray(value)) return ['normal']
+  const list = value.filter((item): item is string => typeof item === 'string')
+  return list.length > 0 ? list : ['normal']
+}
+
 /** 分转元显示。 */
 export function formatFen(fen: number): string {
   return `¥${(fen / 100).toFixed(2)}`
@@ -115,12 +159,20 @@ function readMember(data: unknown): MemberSummary {
     inviteCode: readNullableString(record.inviteCode),
     member: record.member,
     kycVerified: record.kycVerified,
-    paidWechatFen: readCount(record, 'paidWechatFen'),
+    startupPaidFen: readCount(record, 'startupPaidFen'),
+    startupPayableFen: readCount(record, 'startupPayableFen'),
+    mallPaidFen: readCount(record, 'mallPaidFen'),
+    mallPayableFen: readCount(record, 'mallPayableFen'),
     startupPaidOrders: readCount(record, 'startupPaidOrders'),
     mallPaidOrders: readCount(record, 'mallPaidOrders'),
     startupPaidUnits: readCount(record, 'startupPaidUnits'),
     mallPaidUnits: readCount(record, 'mallPaidUnits'),
+    withdrawableBalanceFen: readCount(record, 'withdrawableBalanceFen'),
+    pointsBalanceFen: readCount(record, 'pointsBalanceFen'),
+    consumptionBalanceFen: readCount(record, 'consumptionBalanceFen'),
+    totalWithdrawnFen: readCount(record, 'totalWithdrawnFen'),
     inviteeCount: readCount(record, 'inviteeCount'),
+    identities: readIdentities(record),
     createdAt: readString(record.createdAt),
     updatedAt: readString(record.updatedAt),
   }

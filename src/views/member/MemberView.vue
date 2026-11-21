@@ -3,7 +3,14 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { apiErrorMessage } from '@/api/http'
-import { fetchMembers, formatFen, memberFlagLabel, memberStatusLabel, type MemberSummary } from '@/api/members'
+import {
+  fetchMembers,
+  formatFen,
+  identityLabel,
+  identityTagType,
+  memberStatusLabel,
+  type MemberSummary,
+} from '@/api/members'
 import { routeQueryText } from '@/router/query'
 import MemberDetailDrawer from './MemberDetailDrawer.vue'
 
@@ -86,10 +93,10 @@ function statusTag(status: string): 'success' | 'danger' | 'info' {
     </header>
     <p class="hint">
       可按用户 ID、昵称或手机号查询。昵称按包含匹配，手机号和 ID
-      按完整值匹配。累计实付（微信）只统计实际从微信收到的钱：已支付未退款订单的微信部分
-      加联合创始人开通支付，积分/余额抵扣不计入；它不等于订单应付，也不含运费以外的其他口径。
-      创业/商城列显示「订单笔数 / 商品件数」，创业件数与报单、备案条数一致。
-      邀请人数为直接邀请的下级总数。
+      按完整值匹配。累计实付（微信）= 创业实付 + 商城实付，只统计已支付未退款订单实际从微信收到的钱，
+      积分/余额抵扣不计入。创业/商城列显示「实付（微信）/ 下单总金额（应付，含运费）」，两者差额为积分或余额抵扣。
+      账户列显示可提现 / 积分 / 消费金账户余额（含冻结）。身份：普通=只注册未入座，会员=已入座，
+      联创/工作室/运营团队按在籍记录叠加。累计提现为已打款结算单合计。邀请人数为直接邀请的下级总数。
     </p>
     <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" />
 
@@ -132,22 +139,49 @@ function statusTag(status: string): 'success' | 'danger' | 'info' {
       <el-table-column label="手机号" min-width="130">
         <template #default="{ row }">{{ row.phone || '—' }}</template>
       </el-table-column>
-      <el-table-column label="累计实付（微信）" min-width="130" align="right">
-        <template #default="{ row }">{{ formatFen(row.paidWechatFen) }}</template>
-      </el-table-column>
-      <el-table-column label="创业（单/件）" min-width="110" align="right">
+      <el-table-column label="累计实付（微信）" min-width="120" align="right">
         <template #default="{ row }">
-          {{ row.startupPaidOrders }} / {{ row.startupPaidUnits }}
+          {{ formatFen(row.startupPaidFen + row.mallPaidFen) }}
         </template>
       </el-table-column>
-      <el-table-column label="商城（单/件）" min-width="110" align="right">
-        <template #default="{ row }">{{ row.mallPaidOrders }} / {{ row.mallPaidUnits }}</template>
+      <el-table-column label="创业 实付/应付" min-width="150" align="right">
+        <template #default="{ row }">
+          {{ formatFen(row.startupPaidFen) }} / {{ formatFen(row.startupPayableFen) }}
+        </template>
+      </el-table-column>
+      <el-table-column label="商城 实付/应付" min-width="150" align="right">
+        <template #default="{ row }">
+          {{ formatFen(row.mallPaidFen) }} / {{ formatFen(row.mallPayableFen) }}
+        </template>
+      </el-table-column>
+      <el-table-column label="账户 提现/积分/消费" min-width="190" align="right">
+        <template #default="{ row }">
+          <span class="wallet-cell">
+            {{ formatFen(row.withdrawableBalanceFen) }} /
+            {{ formatFen(row.pointsBalanceFen) }} /
+            {{ formatFen(row.consumptionBalanceFen) }}
+          </span>
+        </template>
+      </el-table-column>
+      <el-table-column label="累计提现" min-width="110" align="right">
+        <template #default="{ row }">{{ formatFen(row.totalWithdrawnFen) }}</template>
       </el-table-column>
       <el-table-column label="邀请人数" width="90" align="right">
         <template #default="{ row }">{{ row.inviteeCount }}</template>
       </el-table-column>
-      <el-table-column label="是否会员" width="100">
-        <template #default="{ row }">{{ memberFlagLabel(row.member) }}</template>
+      <el-table-column label="身份" min-width="150">
+        <template #default="{ row }">
+          <el-tag
+            v-for="identity in row.identities"
+            :key="identity"
+            size="small"
+            effect="plain"
+            :type="identityTagType(identity)"
+            class="identity-tag"
+          >
+            {{ identityLabel(identity) }}
+          </el-tag>
+        </template>
       </el-table-column>
       <el-table-column label="实名" width="90">
         <template #default="{ row }">{{ row.kycVerified ? '已核验' : '未提交' }}</template>
@@ -215,6 +249,14 @@ function statusTag(status: string): 'success' | 'danger' | 'info' {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.identity-tag {
+  margin-right: 4px;
+}
+
+.wallet-cell {
+  white-space: nowrap;
 }
 
 .avatar {

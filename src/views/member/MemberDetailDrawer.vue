@@ -9,7 +9,8 @@ import {
   fetchMember,
   fetchMemberKyc,
   formatFen,
-  memberFlagLabel,
+  identityLabel,
+  identityTagType,
   memberStatusLabel,
   setMemberEnabled,
   type MemberKyc,
@@ -116,8 +117,17 @@ async function toggle(): Promise<void> {
           <el-descriptions-item label="昵称">{{ detail.nickname || '—' }}</el-descriptions-item>
           <el-descriptions-item label="手机号">{{ detail.phone || '—' }}</el-descriptions-item>
           <el-descriptions-item label="邀请码">{{ detail.inviteCode || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="是否会员">
-            {{ memberFlagLabel(detail.member) }}
+          <el-descriptions-item label="身份">
+            <el-tag
+              v-for="identity in detail.identities"
+              :key="identity"
+              size="small"
+              effect="plain"
+              :type="identityTagType(identity)"
+              class="identity-tag"
+            >
+              {{ identityLabel(identity) }}
+            </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="状态">{{
             memberStatusLabel(detail.status)
@@ -126,14 +136,30 @@ async function toggle(): Promise<void> {
 
         <h2>消费与邀请</h2>
         <el-descriptions :column="2" border>
-          <el-descriptions-item label="累计实付（微信）">{{ formatFen(detail.paidWechatFen) }}</el-descriptions-item>
-          <el-descriptions-item label="邀请人数">{{ detail.inviteeCount }}</el-descriptions-item>
+          <el-descriptions-item label="累计实付（微信）">
+            {{ formatFen(detail.startupPaidFen + detail.mallPaidFen) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="累计提现">{{ formatFen(detail.totalWithdrawnFen) }}</el-descriptions-item>
+          <el-descriptions-item label="创业 实付/应付">
+            {{ formatFen(detail.startupPaidFen) }} / {{ formatFen(detail.startupPayableFen) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="商城 实付/应付">
+            {{ formatFen(detail.mallPaidFen) }} / {{ formatFen(detail.mallPayableFen) }}
+          </el-descriptions-item>
           <el-descriptions-item label="创业（单/件）">
             {{ detail.startupPaidOrders }} / {{ detail.startupPaidUnits }}
           </el-descriptions-item>
           <el-descriptions-item label="商城（单/件）">
             {{ detail.mallPaidOrders }} / {{ detail.mallPaidUnits }}
           </el-descriptions-item>
+        </el-descriptions>
+
+        <h2>账户余额</h2>
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="可提现">{{ formatFen(detail.withdrawableBalanceFen) }}</el-descriptions-item>
+          <el-descriptions-item label="积分">{{ formatFen(detail.pointsBalanceFen) }}</el-descriptions-item>
+          <el-descriptions-item label="消费金">{{ formatFen(detail.consumptionBalanceFen) }}</el-descriptions-item>
+          <el-descriptions-item label="邀请人数">{{ detail.inviteeCount }}</el-descriptions-item>
         </el-descriptions>
 
         <h2>实名信息</h2>
@@ -174,6 +200,10 @@ async function toggle(): Promise<void> {
   height: 64px;
   margin-bottom: 16px;
   border-radius: 8px;
+}
+
+.identity-tag {
+  margin-right: 4px;
 }
 
 h2 {
