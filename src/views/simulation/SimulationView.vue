@@ -357,9 +357,10 @@ function onResetData(): void {
     .then(() => {
       void run(async () => {
         const result = await resetSimulationData()
+        applyClock(result.status)
         buyResults.value = []
         await reloadTimeline()
-        ElMessage.success(`已清空业务数据，删除 ${result.removedUsers} 个会员`)
+        ElMessage.success(`已清空业务数据，删除 ${result.removedUsers} 个会员，仿真起点已回到当前时间`)
       })
     })
     .catch(() => {})
@@ -474,7 +475,7 @@ const walletDiffRows = computed(() => {
               {{
                 overrideActive
                   ? '已在上次仿真的时刻，继续往后推进即可。'
-                  : '还没有仿真记录，以当前时间作为起点；首次推进时自动设定。'
+                  : '以当前时间作为起点；首次推进时自动设定。'
               }}
             </p>
           </div>

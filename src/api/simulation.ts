@@ -359,12 +359,16 @@ export async function simulationRole(
   }
 }
 
-/** 清空业务数据：订单、钱包、树、报单、分红、角色，保留商品与系统配置。 */
-export async function resetSimulationData(): Promise<{ removedUsers: number }> {
+/** 清空业务数据：订单、钱包、树、报单、分红、角色，保留商品与系统配置。时钟一并回到真实时间。 */
+export async function resetSimulationData(): Promise<{
+  removedUsers: number
+  status: SimulationStatus
+}> {
   const { data } = await http.post<unknown>('/admin/simulation/reset-data')
   const record = asRecord(data) ?? {}
   return {
     removedUsers: typeof record.removedUsers === 'number' ? record.removedUsers : 0,
+    status: toStatus(record.status),
   }
 }
 
