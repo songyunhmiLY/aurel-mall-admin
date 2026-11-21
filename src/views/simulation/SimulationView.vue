@@ -171,6 +171,30 @@ function applyClock(next: SimulationStatus): void {
   status.value = next
 }
 
+/** 快捷步长：点一次在编辑框时间上叠加，编辑框为空则以仿真起点为基准。 */
+const ADVANCE_SHORTCUTS = [
+  { label: '10 分钟', minutes: 10 },
+  { label: '30 分钟', minutes: 30 },
+  { label: '1 小时', minutes: 60 },
+  { label: '1 天', minutes: 1440 },
+] as const
+
+/** 编辑框已有时间就往后叠加，没有就从仿真起点（覆盖值或当前业务时间）起算。 */
+function bumpAdvanceTarget(minutes: number): void {
+  const baseIso = advanceTarget.value?.toISOString() ?? status.value?.clock.override ?? status.value?.clock.now
+  if (!baseIso) {
+    actionError.value = '尚未取到仿真起点，请刷新页面后重试'
+    return
+  }
+  const baseMs = Date.parse(baseIso)
+  if (Number.isNaN(baseMs)) {
+    actionError.value = '仿真起点时间无效，请刷新页面后重试'
+    return
+  }
+  actionError.value = ''
+  advanceTarget.value = new Date(baseMs + minutes * 60_000)
+}
+
 /**
  * 逐业务日推进：跨日公排、跨月核算按各自业务日执行。
  *
@@ -481,15 +505,30 @@ const walletDiffRows = computed(() => {
           </div>
         </el-form-item>
         <el-form-item label="逐日推进到">
-          <el-date-picker
-            v-model="advanceTarget"
-            type="datetime"
-            placeholder="选择目标时刻（只能往后）"
-            class="step-input"
-          />
-          <el-button type="primary" :disabled="busy" @click="onAdvance">
-            推进（逐日执行公排与核算）
-          </el-button>
+          <div class="advance-row">
+            <el-date-picker
+              v-model="advanceTarget"
+              type="datetime"
+              placeholder="选择目标时刻（只能往后）"
+              class="step-input"
+            />
+            <div class="advance-quick">
+              <el-button
+                v-for="item in ADVANCE_SHORTCUTS"
+                :key="item.label"
+                size="small"
+                plain
+                :disabled="busy"
+                @click="bumpAdvanceTarget(item.minutes)"
+              >
+                +{{ item.label }}
+              </el-button>
+            </div>
+            <el-button type="primary" :disabled="busy" @click="onAdvance">
+              推进（逐日执行公排与核算）
+            </el-button>
+          </div>
+          <p class="tip">快捷按钮在当前编辑框时间上累加；编辑框为空时从仿真起点起算。</p>
         </el-form-item>
       </el-form>
       <el-alert v-if="actionError" type="error" :title="actionError" show-icon :closable="false" />
@@ -860,6 +899,34 @@ const walletDiffRows = computed(() => {
 .step-input {
   width: 280px;
   margin-right: 12px;
+}
+
+/* 逐日推进行：时间框 + 快捷步进 + 推进按钮，窄屏时整组换行。 */
+.advance-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.advance-row .step-input {
+  margin-right: 0;
+}
+
+.advance-quick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.advance-row > .el-button,
+.advance-quick .el-button + .el-button {
+  margin-left: 0;
+}
+
+.advance-row + .tip {
+  width: 100%;
 }
 
 .action-form {
