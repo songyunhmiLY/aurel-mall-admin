@@ -5,7 +5,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { apiErrorMessage } from '@/api/http'
 import { fetchProducts, type Product } from '@/api/products'
 import {
-  clearSimulationClock,
   fetchSimulationOverview,
   fetchSimulationStatus,
   fetchSimulationTimeline,
@@ -18,7 +17,6 @@ import {
   simulationRegister,
   simulationRole,
   simulationSeedTree,
-  simulationStep,
   type SimulatedPurchaseResult,
   type SimulatedTreeNode,
   type SimulationEvent,
@@ -34,9 +32,6 @@ const status = ref<SimulationStatus | null>(null)
 const overview = ref<SimulationOverview | null>(null)
 const events = ref<SimulationEvent[]>([])
 
-const clockInput = ref('')
-const stepTargetInput = ref('')
-const stepMinutesInput = ref<number | undefined>(undefined)
 const advanceTarget = ref<Date | null>(null)
 
 const registerCount = ref(20)
@@ -72,7 +67,20 @@ const roleName = ref<'cofounder' | 'studio' | 'ops_team'>('cofounder')
 const roleMessage = ref('')
 
 const overrideActive = computed(() => status.value?.clock.source === 'override')
-const clockAllowed = computed(() => status.value?.clock.allowed === true)
+
+/** 仿真起点：有覆盖值沿用上次仿真的时刻，否则取当前业务时间（即真实时间）。 */
+const clockStartLabel = computed(() => {
+  const iso = status.value?.clock.override ?? status.value?.clock.now
+  return iso ? formatDateTime(iso) : '-'
+})
+
+function formatDateTime(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) {
+    return iso
+  }
+  return date.toLocaleString('zh-CN', { hour12: false })
+}
 
 onMounted(() => {
   void load()
@@ -120,9 +128,6 @@ async function load(): Promise<void> {
     status.value = nextStatus
     events.value = timeline
     overview.value = nextOverview
-    if (nextStatus.clock.override) {
-      clockInput.value = nextStatus.clock.override
-    }
   } catch (error) {
     loadError.value = apiErrorMessage(
       error,
@@ -131,14 +136,6 @@ async function load(): Promise<void> {
   } finally {
     loading.value = false
   }
-}
-
-function requireOverride(): boolean {
-  if (!overrideActive.value) {
-    actionError.value = '请先设置仿真时钟起点，再执行推进相关操作'
-    return false
-  }
-  return true
 }
 
 async function run(action: () => Promise<void>): Promise<void> {
@@ -172,77 +169,34 @@ async function reloadTimeline(): Promise<void> {
 
 function applyClock(next: SimulationStatus): void {
   status.value = next
-  if (next.clock.override) {
-    clockInput.value = next.clock.override
-  }
 }
 
-function onSetClock(): void {
-  if (!clockInput.value) {
-    actionError.value = '请选择或输入目标时刻（ISO 格式）'
-    return
-  }
-  void run(async () => {
-    applyClock(await setSimulationClock(new Date(clockInput.value).toISOString()))
-    await reloadTimeline()
-    ElMessage.success('仿真时钟已设置')
-  })
-}
-
-function onClearClock(): void {
-  void run(async () => {
-    applyClock(await clearSimulationClock())
-    await reloadTimeline()
-    ElMessage.success('已清除时钟覆盖，恢复真实时间')
-  })
-}
-
-/** 逐业务日推进：跨日公排、跨月核算按各自业务日执行。 */
+/**
+ * 逐业务日推进：跨日公排、跨月核算按各自业务日执行。
+ *
+ * 起点自动确定：已有仿真记录时后端带覆盖值，直接往后推；从未仿真过则用当前
+ * 业务时间（即真实时间）先落一个起点，再推进，避免把起点之前的空档算进来。
+ */
 function onAdvance(): void {
-  if (!requireOverride()) return
   if (!advanceTarget.value) {
     actionError.value = '请选择要推进到的时刻'
     return
   }
+  const target = advanceTarget.value as Date
+  const startIso = status.value?.clock.override ?? status.value?.clock.now
+  if (startIso && target.getTime() <= Date.parse(startIso)) {
+    actionError.value = '目标时刻必须晚于仿真起点'
+    return
+  }
   void run(async () => {
-    const target = advanceTarget.value as Date
+    if (!status.value?.clock.override) {
+      const start = status.value?.clock.now ?? new Date().toISOString()
+      applyClock(await setSimulationClock(start))
+    }
     const result = await simulationAdvance(target.toISOString())
     applyClock(result.status)
     await reloadTimeline()
     ElMessage.success(`已推进到 ${target.toLocaleString()}，期间执行了 ${result.steps} 次到期任务`)
-  })
-}
-
-function onStep(): void {
-  if (!requireOverride()) return
-  const hasTarget = stepTargetInput.value.trim() !== ''
-  const hasMinutes = stepMinutesInput.value !== undefined && stepMinutesInput.value !== null
-  if (hasTarget === hasMinutes) {
-    actionError.value = '单步推进请二选一：目标时刻 或 推进分钟数'
-    return
-  }
-  void run(async () => {
-    const payload = hasTarget
-      ? { to: new Date(stepTargetInput.value).toISOString() }
-      : { byMinutes: stepMinutesInput.value as number }
-    const next = await simulationStep(payload)
-    status.value = next.status
-    if (next.status.clock.override) {
-      stepTargetInput.value = ''
-      stepMinutesInput.value = undefined
-    }
-    await reloadTimeline()
-    ElMessage.success('已推进并触发到期任务')
-  })
-}
-
-function onCatchUp(): void {
-  if (!requireOverride()) return
-  void run(async () => {
-    const next = await simulationStep({})
-    status.value = next.status
-    await reloadTimeline()
-    ElMessage.success('仿真时钟已追平现实时间，并触发到期任务')
   })
 }
 
@@ -506,37 +460,24 @@ const walletDiffRows = computed(() => {
     </el-card>
 
     <el-card v-loading="loading" shadow="never" class="block">
-      <template #header>当前时钟</template>
-      <el-descriptions :column="2" border>
-        <el-descriptions-item label="时钟来源">
-          <el-tag :type="overrideActive ? 'warning' : 'info'">
-            {{ overrideActive ? '仿真覆盖' : '真实时间' }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="允许覆盖（ALLOW_CLOCK_OVERRIDE）">
-          <el-tag :type="clockAllowed ? 'success' : 'danger'">
-            {{ clockAllowed ? '允许' : '禁止' }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="当前业务时间">{{
-          status?.clock.now ?? '-'
-        }}</el-descriptions-item>
-        <el-descriptions-item label="覆盖值">{{
-          status?.clock.override ?? '未设置'
-        }}</el-descriptions-item>
-      </el-descriptions>
-
-      <el-form label-width="130px" class="clock-form">
+      <template #header>仿真时钟</template>
+      <el-form label-width="110px" class="clock-form">
         <el-form-item label="仿真起点">
-          <el-input
-            v-model="clockInput"
-            placeholder="ISO 时间，如 2026-01-01T00:00:00.000Z"
-            clearable
-          >
-            <template #append>
-              <el-button :disabled="busy" @click="onSetClock">设置</el-button>
-            </template>
-          </el-input>
+          <div>
+            <div class="clock-value">
+              {{ clockStartLabel }}
+              <el-tag :type="overrideActive ? 'warning' : 'info'" size="small" class="ml-8">
+                {{ overrideActive ? '上次仿真时间' : '当前时间' }}
+              </el-tag>
+            </div>
+            <p class="tip">
+              {{
+                overrideActive
+                  ? '已在上次仿真的时刻，继续往后推进即可。'
+                  : '还没有仿真记录，以当前时间作为起点；首次推进时自动设定。'
+              }}
+            </p>
+          </div>
         </el-form-item>
         <el-form-item label="逐日推进到">
           <el-date-picker
@@ -545,28 +486,9 @@ const walletDiffRows = computed(() => {
             placeholder="选择目标时刻（只能往后）"
             class="step-input"
           />
-          <el-button type="primary" :disabled="busy || !overrideActive" @click="onAdvance">
+          <el-button type="primary" :disabled="busy" @click="onAdvance">
             推进（逐日执行公排与核算）
           </el-button>
-        </el-form-item>
-        <el-form-item label="单步推进">
-          <el-input
-            v-model="stepTargetInput"
-            placeholder="目标时刻（ISO），与分钟数二选一"
-            clearable
-            class="step-input"
-          />
-          <el-input-number
-            v-model="stepMinutesInput"
-            :min="1"
-            placeholder="分钟数"
-            class="step-input"
-          />
-          <el-button :disabled="busy || !overrideActive" @click="onStep">推进一次</el-button>
-          <el-button :disabled="busy || !overrideActive" @click="onCatchUp">追平现实时间</el-button>
-        </el-form-item>
-        <el-form-item label="时钟">
-          <el-button :disabled="busy" @click="onClearClock">清除时钟覆盖</el-button>
         </el-form-item>
       </el-form>
       <el-alert v-if="actionError" type="error" :title="actionError" show-icon :closable="false" />
@@ -977,6 +899,18 @@ const walletDiffRows = computed(() => {
 
 .danger-block {
   border-color: #f0c9c9;
+}
+
+.clock-value {
+  display: flex;
+  align-items: center;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.ml-8 {
+  margin-left: 8px;
+  font-weight: 400;
 }
 
 .ml-4 {
