@@ -36,7 +36,6 @@ export type SimulationAction =
   | 'role'
   | 'red_packet_signup'
   | 'reset'
-  | 'reset_data'
 
 export interface SimulationEvent {
   id: string
@@ -93,7 +92,6 @@ const ACTION_LABELS: Record<SimulationAction, string> = {
   role: '任命角色',
   red_packet_signup: '红包报名',
   reset: '清空时间轴',
-  reset_data: '重置业务数据',
 }
 
 export function simulationActionLabel(action: string): string {

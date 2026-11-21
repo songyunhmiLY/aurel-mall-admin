@@ -347,7 +347,7 @@ function onResetTimeline(): void {
 
 function onResetData(): void {
   void ElMessageBox.prompt(
-    '会清空订单、支付、钱包、市场树、报单、分红、角色与全部会员（保留根账户）。商品与系统配置不受影响。请输入「重置」确认。',
+    '会清空订单、支付、钱包、市场树、报单、分红、角色与全部会员（保留根账户），并清空时间轴。商品与系统配置不受影响。请输入「重置」确认。',
     '重置业务数据',
     {
       confirmButtonText: '重置',
@@ -362,8 +362,13 @@ function onResetData(): void {
         const result = await resetSimulationData()
         applyClock(result.status)
         buyResults.value = []
+        redPacketResults.value = []
+        advanceTarget.value = null
+        actionError.value = ''
         await reloadTimeline()
-        ElMessage.success(`已清空业务数据，删除 ${result.removedUsers} 个会员，仿真起点已回到当前时间`)
+        ElMessage.success(
+          `已清空业务数据，删除 ${result.removedUsers} 个会员；时间轴已清空，仿真起点回到当前时间`,
+        )
       })
     })
     .catch(() => {})
@@ -776,9 +781,6 @@ const walletDiffRows = computed(() => {
             <span v-else-if="row.action === 'register'">新增 {{ row.detail.created }} 个用户</span>
             <span v-else-if="row.action === 'purchase'">成功下单 {{ row.detail.created }} 笔</span>
             <span v-else-if="row.action === 'role'">任命 {{ row.detail.created }} 次</span>
-            <span v-else-if="row.action === 'reset_data'">
-              清空业务数据，删除 {{ row.detail.created }} 个会员
-            </span>
             <span v-else-if="row.action === 'clear_clock'"
               >从 {{ row.detail.from }} 恢复真实时间</span
             >
