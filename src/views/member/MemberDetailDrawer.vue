@@ -128,8 +128,12 @@ async function toggle(): Promise<void> {
         <el-descriptions :column="2" border>
           <el-descriptions-item label="累计实付（微信）">{{ formatFen(detail.paidWechatFen) }}</el-descriptions-item>
           <el-descriptions-item label="邀请人数">{{ detail.inviteeCount }}</el-descriptions-item>
-          <el-descriptions-item label="创业单">{{ detail.startupPaidOrders }}</el-descriptions-item>
-          <el-descriptions-item label="商城单">{{ detail.mallPaidOrders }}</el-descriptions-item>
+          <el-descriptions-item label="创业（单/件）">
+            {{ detail.startupPaidOrders }} / {{ detail.startupPaidUnits }}
+          </el-descriptions-item>
+          <el-descriptions-item label="商城（单/件）">
+            {{ detail.mallPaidOrders }} / {{ detail.mallPaidUnits }}
+          </el-descriptions-item>
         </el-descriptions>
 
         <h2>实名信息</h2>

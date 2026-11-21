@@ -14,6 +14,8 @@ export interface MemberSummary {
   paidWechatFen: number
   startupPaidOrders: number
   mallPaidOrders: number
+  startupPaidUnits: number
+  mallPaidUnits: number
   inviteeCount: number
   createdAt: string
   updatedAt: string
@@ -116,6 +118,8 @@ function readMember(data: unknown): MemberSummary {
     paidWechatFen: readCount(record, 'paidWechatFen'),
     startupPaidOrders: readCount(record, 'startupPaidOrders'),
     mallPaidOrders: readCount(record, 'mallPaidOrders'),
+    startupPaidUnits: readCount(record, 'startupPaidUnits'),
+    mallPaidUnits: readCount(record, 'mallPaidUnits'),
     inviteeCount: readCount(record, 'inviteeCount'),
     createdAt: readString(record.createdAt),
     updatedAt: readString(record.updatedAt),
