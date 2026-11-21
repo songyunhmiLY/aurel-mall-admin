@@ -8,6 +8,8 @@ import {
   fetchSimulationOverview,
   fetchSimulationStatus,
   fetchSimulationTimeline,
+  fetchSimulationUserLedger,
+  fetchSimulationUsersTree,
   resetSimulationData,
   resetSimulationTimeline,
   setSimulationClock,
@@ -20,8 +22,13 @@ import {
   type SimulatedPurchaseResult,
   type SimulatedRedPacketSignupResult,
   type SimulationEvent,
+  type SimulationFilingInfo,
+  type SimulationLedgerEntry,
   type SimulationOverview,
   type SimulationStatus,
+  type SimulationTreeEdge,
+  type SimulationTreeUser,
+  type SimulationUnfiledOrder,
 } from '@/api/simulation'
 
 const loading = ref(true)
@@ -63,6 +70,81 @@ const MALL_PRODUCT_MAX_PAGES = 5
 const roleUserId = ref('')
 const roleName = ref<'cofounder' | 'studio' | 'ops_team'>('cofounder')
 const roleMessage = ref('')
+
+/* ---------- 用户树：邀请树 / 市场树 ---------- */
+
+interface UserTreeNode {
+  key: string
+  user: SimulationTreeUser | null
+  label: string
+  filings: SimulationFilingInfo[]
+  unfiled: SimulationUnfiledOrder[]
+  children: UserTreeNode[]
+}
+
+const treeKind = ref<'invite' | 'market'>('invite')
+const treeUsers = ref<SimulationTreeUser[]>([])
+const inviteEdges = ref<SimulationTreeEdge[]>([])
+const marketEdges = ref<SimulationTreeEdge[]>([])
+const treeFilings = ref<Record<string, SimulationFilingInfo[]>>({})
+const treeUnfiled = ref<Record<string, SimulationUnfiledOrder[]>>({})
+const treeLoading = ref(false)
+const treeError = ref('')
+const treeLoaded = ref(false)
+
+const detailVisible = ref(false)
+const detailUser = ref<SimulationTreeUser | null>(null)
+const detailFilings = ref<SimulationFilingInfo[]>([])
+const detailUnfiled = ref<SimulationUnfiledOrder[]>([])
+const detailEntries = ref<SimulationLedgerEntry[]>([])
+const detailLoading = ref(false)
+const detailError = ref('')
+
+const IDENTITY_LABELS: Record<string, string> = {
+  normal: '普通',
+  member: '会员',
+  cofounder: '联创',
+  studio: '工作室',
+  ops_team: '运营团队',
+}
+
+const WALLET_LABELS: Record<string, string> = {
+  withdrawable: '可提现',
+  points: '积分',
+  consumption: '消费金',
+}
+
+const LEDGER_BIZ_LABELS: Record<string, string> = {
+  order_payment: '订单支付',
+  mall_refund: '商城退款',
+  filing_settlement: '幸运返还',
+  withdrawal_payout: '提现打款',
+  consumption_transfer: '消费金划转',
+}
+
+function identityLabel(value: string): string {
+  return IDENTITY_LABELS[value] ?? value
+}
+
+function identityTagType(value: string): 'success' | 'warning' | 'info' | 'danger' {
+  if (value === 'member') return 'success'
+  if (value === 'cofounder') return 'danger'
+  if (value === 'studio' || value === 'ops_team') return 'warning'
+  return 'info'
+}
+
+function walletLabel(value: string): string {
+  return WALLET_LABELS[value] ?? value
+}
+
+function ledgerBizLabel(value: string): string {
+  return LEDGER_BIZ_LABELS[value] ?? value
+}
+
+/** 分转成 ¥x.xx，节点上空间小，不带「元」。 */
+function money(value: number): string {
+  return `¥${(value / 100).toFixed(2)}`
+}
 
 const overrideActive = computed(() => status.value?.clock.source === 'override')
 
@@ -142,6 +224,10 @@ async function run(action: () => Promise<void>): Promise<void> {
   actionError.value = ''
   try {
     await action()
+    // 造数动作会改变树结构、钱包余额与报单，门面数据与节点详情都要跟着刷新。
+    if (treeLoaded.value) {
+      await reloadUsersTree()
+    }
   } catch (error) {
     actionError.value = apiErrorMessage(error, '操作失败')
   } finally {
@@ -167,6 +253,115 @@ async function reloadTimeline(): Promise<void> {
 
 function applyClock(next: SimulationStatus): void {
   status.value = next
+}
+
+/* ---------- 用户树数据 ---------- */
+
+/** 两棵树都按 parentId 组树；市场树里未入座的用户单列一组，避免“注册了却看不到”。 */
+const treeData = computed<UserTreeNode[]>(() => {
+  const usersById = new Map(treeUsers.value.map((item) => [item.userId, item]))
+  const edges = treeKind.value === 'invite' ? inviteEdges.value : marketEdges.value
+  const edgeUserIds = new Set(edges.map((edge) => edge.userId))
+  const childrenByParent = new Map<string, string[]>()
+  const roots: string[] = []
+  for (const edge of edges) {
+    if (edge.parentId === null || edge.parentId === edge.userId || !usersById.has(edge.parentId)) {
+      roots.push(edge.userId)
+      continue
+    }
+    const list = childrenByParent.get(edge.parentId) ?? []
+    list.push(edge.userId)
+    childrenByParent.set(edge.parentId, list)
+  }
+  const build = (userId: string, visiting: Set<string>, depth: number): UserTreeNode => {
+    const user = usersById.get(userId) ?? null
+    const blocked = depth >= 64 || visiting.has(userId)
+    const childIds = blocked ? [] : (childrenByParent.get(userId) ?? [])
+    const nextVisiting = new Set(visiting)
+    nextVisiting.add(userId)
+    return {
+      key: `${treeKind.value}-${userId}`,
+      user,
+      label: user?.nickname ?? `#${userId}`,
+      filings: treeFilings.value[userId] ?? [],
+      unfiled: treeUnfiled.value[userId] ?? [],
+      children: childIds.map((childId) => build(childId, nextVisiting, depth + 1)),
+    }
+  }
+  const nodes = roots.map((userId) => build(userId, new Set(), 0))
+  const orphans = treeUsers.value
+    .filter((item) => !edgeUserIds.has(item.userId))
+    .map((item) => build(item.userId, new Set(), 0))
+  if (orphans.length > 0) {
+    nodes.push({
+      key: `${treeKind.value}-orphans`,
+      user: null,
+      label:
+        treeKind.value === 'market'
+          ? `未入座（${orphans.length} 人，尚未进入市场树）`
+          : `未挂靠（${orphans.length} 人，没有邀请关系）`,
+      filings: [],
+      unfiled: [],
+      children: orphans,
+    })
+  }
+  return nodes
+})
+
+async function reloadUsersTree(): Promise<void> {
+  treeLoading.value = true
+  treeError.value = ''
+  try {
+    const tree = await fetchSimulationUsersTree()
+    treeUsers.value = tree.users
+    inviteEdges.value = tree.invite
+    marketEdges.value = tree.market
+    treeFilings.value = tree.filings
+    treeUnfiled.value = tree.unfiled
+    treeLoaded.value = true
+    const openUserId = detailVisible.value ? detailUser.value?.userId : undefined
+    if (openUserId) {
+      const refreshed = tree.users.find((item) => item.userId === openUserId)
+      if (refreshed) {
+        detailUser.value = refreshed
+        detailFilings.value = tree.filings[refreshed.userId] ?? []
+        detailUnfiled.value = tree.unfiled[refreshed.userId] ?? []
+      }
+      await loadDetailEntries(openUserId)
+    }
+  } catch (error) {
+    treeError.value = apiErrorMessage(error, '读取用户树失败')
+  } finally {
+    treeLoading.value = false
+  }
+}
+
+async function loadDetailEntries(userId: string): Promise<void> {
+  detailLoading.value = true
+  detailError.value = ''
+  try {
+    detailEntries.value = await fetchSimulationUserLedger(userId)
+  } catch (error) {
+    detailError.value = apiErrorMessage(error, '读取账务明细失败')
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+function onTreeNodeClick(node: UserTreeNode): void {
+  if (!node.user) return
+  detailUser.value = node.user
+  detailFilings.value = node.filings
+  detailUnfiled.value = node.unfiled
+  detailEntries.value = []
+  detailVisible.value = true
+  void loadDetailEntries(node.user.userId)
+}
+
+function onTabChange(name: string | number): void {
+  if (name === 'users' && !treeLoaded.value) {
+    void reloadUsersTree()
+  }
 }
 
 /** 快捷步长：点一次在编辑框时间上叠加，编辑框为空则以仿真起点为基准。 */
@@ -365,6 +560,7 @@ function onResetData(): void {
         redPacketResults.value = []
         advanceTarget.value = null
         actionError.value = ''
+        detailVisible.value = false
         await reloadTimeline()
         ElMessage.success(
           `已清空业务数据，删除 ${result.removedUsers} 个会员；时间轴已清空，仿真起点回到当前时间`,
@@ -392,6 +588,14 @@ function fen(value: number): string {
 function yuan(value: number): string {
   return `${(value / 100).toFixed(2)} 元`
 }
+
+/** 已返现序号：卡片空间有限，超过 12 个只显示前 12 个并标注总数。 */
+const settledSequenceText = computed(() => {
+  const list = overview.value?.filings.settledSequences ?? []
+  if (list.length === 0) return '—'
+  const head = list.slice(0, 12).join(' / ')
+  return list.length > 12 ? `${head} … 共 ${list.length} 个` : head
+})
 
 const walletDiffRows = computed(() => {
   const diff = [...events.value].reverse().find((item) => item.diff)?.diff
@@ -456,14 +660,25 @@ const walletDiffRows = computed(() => {
           <div class="stat__value">{{ yuan(overview?.orders.paidAmountFen ?? 0) }}</div>
         </div>
         <div class="stat">
-          <div class="stat__label">联合创始人</div>
-          <div class="stat__value">{{ overview?.roles.cofounders ?? 0 }}</div>
+          <div class="stat__label">联创 / 工作室 / 运营中心</div>
+          <div class="stat__value">
+            {{ overview?.roles.cofounders ?? 0 }} / {{ overview?.roles.studios ?? 0 }} /
+            {{ overview?.roles.opsTeam ?? 0 }}
+          </div>
         </div>
         <div class="stat">
-          <div class="stat__label">工作室 / 运营中心</div>
-          <div class="stat__value">
-            {{ overview?.roles.studios ?? 0 }} / {{ overview?.roles.opsTeam ?? 0 }}
+          <div class="stat__label">全网公排（已完成）</div>
+          <div class="stat__value">{{ overview?.filings.completed ?? 0 }} 单</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">已返现序号</div>
+          <div class="stat__value stat__value--seq">
+            {{ settledSequenceText }}
           </div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">未参与公排订单</div>
+          <div class="stat__value">{{ overview?.filings.unfiledOrders ?? 0 }} 单</div>
         </div>
       </div>
     </el-card>
@@ -520,7 +735,7 @@ const walletDiffRows = computed(() => {
 
     <el-card shadow="never" class="block">
       <template #header>造数动作</template>
-      <el-tabs>
+      <el-tabs @tab-change="onTabChange">
         <el-tab-pane label="批量注册">
           <el-form label-width="110px" class="action-form">
             <el-form-item label="人数">
@@ -743,6 +958,99 @@ const walletDiffRows = computed(() => {
             联合创始人走付费开通并产生沙箱付款记录；工作室与运营中心按管理端指定入籍，不产生付款。
           </p>
         </el-tab-pane>
+
+        <el-tab-pane label="用户树" name="users">
+          <div class="tree-toolbar">
+            <el-radio-group v-model="treeKind" size="small">
+              <el-radio-button value="invite">邀请树</el-radio-button>
+              <el-radio-button value="market">市场树</el-radio-button>
+            </el-radio-group>
+            <el-button size="small" :disabled="treeLoading" @click="reloadUsersTree">
+              刷新
+            </el-button>
+            <span class="tip tree-toolbar__note">
+              节点显示编号、昵称、身份与三个钱包余额；鼠标停留看公排报单，点击看账户变动明细。
+            </span>
+          </div>
+          <el-alert
+            v-if="treeError"
+            type="error"
+            :title="treeError"
+            show-icon
+            :closable="false"
+            class="tree-error"
+          />
+          <div v-loading="treeLoading" class="tree-wrap">
+            <el-tree
+              v-if="treeData.length > 0"
+              :data="treeData"
+              node-key="key"
+              default-expand-all
+              :expand-on-click-node="false"
+              :props="{ children: 'children', label: 'label' }"
+              class="user-tree"
+            >
+              <template #default="{ data }">
+                <el-tooltip
+                  v-if="data.user"
+                  placement="right-start"
+                  effect="light"
+                  :show-after="180"
+                >
+                  <template #content>
+                    <div class="tree-tip">
+                      <div class="tree-tip__title">
+                        #{{ data.user.userId }} {{ data.user.nickname }}
+                      </div>
+                      <div class="tree-tip__section">公排报单序号</div>
+                      <div v-if="data.filings.length === 0" class="tree-tip__empty">
+                        暂无已完成报单
+                      </div>
+                      <div v-for="item in data.filings" :key="item.filingNo" class="tree-tip__line">
+                        第 {{ item.sequence }} 单 · {{ item.bizDate ?? '-' }} ·
+                        {{ money(item.amountFen) }} ·
+                        {{ item.status === 'settled' ? '已返现' : '已完成' }}
+                      </div>
+                      <div class="tree-tip__section">未参与公排的订单</div>
+                      <div v-if="data.unfiled.length === 0" class="tree-tip__empty">无</div>
+                      <div v-for="item in data.unfiled" :key="item.orderNo" class="tree-tip__line">
+                        {{ item.orderNo }} · {{ item.units }} 件 · {{ money(item.amountFen) }} ·
+                        {{ formatDateTime(item.paidAt) }}
+                      </div>
+                      <div class="tree-tip__hint">点击节点查看账户变动明细</div>
+                    </div>
+                  </template>
+                  <div class="tree-user" @click="onTreeNodeClick(data)">
+                    <span class="tree-user__id">#{{ data.user.userId }}</span>
+                    <span class="tree-user__nick">{{ data.user.nickname }}</span>
+                    <el-tag
+                      v-for="identity in data.user.identities"
+                      :key="identity"
+                      size="small"
+                      effect="plain"
+                      :type="identityTagType(identity)"
+                    >
+                      {{ identityLabel(identity) }}
+                    </el-tag>
+                    <span class="tree-user__wallet">
+                      提现 {{ money(data.user.wallets.withdrawable) }}
+                    </span>
+                    <span class="tree-user__wallet">
+                      积分 {{ money(data.user.wallets.points) }}
+                    </span>
+                    <span class="tree-user__wallet">
+                      消费 {{ money(data.user.wallets.consumption) }}
+                    </span>
+                  </div>
+                </el-tooltip>
+                <div v-else class="tree-group">{{ data.label }}</div>
+              </template>
+            </el-tree>
+            <p v-else-if="!treeLoading" class="tip">
+              还没有用户。先在「批量注册」里造人，或在「批量购买创业专区」里让会员入座。
+            </p>
+          </div>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
 
@@ -827,6 +1135,115 @@ const walletDiffRows = computed(() => {
         时间轴一并清空、仿真起点回到当前时间。操作不可恢复，请只在演练库使用。
       </p>
     </el-card>
+
+    <el-drawer
+      v-model="detailVisible"
+      :title="detailUser ? `#${detailUser.userId} ${detailUser.nickname}` : '用户详情'"
+      size="760px"
+    >
+      <div v-if="detailUser" class="user-detail">
+        <div class="user-detail__identities">
+          <el-tag
+            v-for="identity in detailUser.identities"
+            :key="identity"
+            size="small"
+            effect="plain"
+            :type="identityTagType(identity)"
+          >
+            {{ identityLabel(identity) }}
+          </el-tag>
+        </div>
+        <el-descriptions :column="3" border size="small">
+          <el-descriptions-item label="可提现">
+            {{ money(detailUser.wallets.withdrawable) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="积分">
+            {{ money(detailUser.wallets.points) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="消费金">
+            {{ money(detailUser.wallets.consumption) }}
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <div class="user-detail__block">
+          <div class="user-detail__title">公排报单（{{ detailFilings.length }} 单）</div>
+          <el-table :data="detailFilings" size="small" border empty-text="暂无已完成报单">
+            <el-table-column prop="sequence" label="序号" width="70" />
+            <el-table-column prop="bizDate" label="业务日" width="110" />
+            <el-table-column label="金额" width="100">
+              <template #default="{ row }">{{ money(row.amountFen) }}</template>
+            </el-table-column>
+            <el-table-column label="状态" width="90">
+              <template #default="{ row }">
+                {{ row.status === 'settled' ? '已返现' : '已完成' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="filingNo" label="报单号" min-width="150" />
+          </el-table>
+        </div>
+
+        <div class="user-detail__block">
+          <div class="user-detail__title">
+            未参与公排的订单（{{ detailUnfiled.length }} 单）
+          </div>
+          <el-table :data="detailUnfiled" size="small" border empty-text="无">
+            <el-table-column prop="orderNo" label="订单号" min-width="160" />
+            <el-table-column prop="units" label="件数" width="70" />
+            <el-table-column label="金额" width="100">
+              <template #default="{ row }">{{ money(row.amountFen) }}</template>
+            </el-table-column>
+            <el-table-column label="支付时间" min-width="160">
+              <template #default="{ row }">{{ formatDateTime(row.paidAt) }}</template>
+            </el-table-column>
+          </el-table>
+        </div>
+
+        <div class="user-detail__block">
+          <div class="user-detail__title">账户变动明细（最近 100 条）</div>
+          <el-alert
+            v-if="detailError"
+            type="error"
+            :title="detailError"
+            show-icon
+            :closable="false"
+            class="tree-error"
+          />
+          <el-table
+            v-loading="detailLoading"
+            :data="detailEntries"
+            size="small"
+            border
+            empty-text="暂无流水"
+          >
+            <el-table-column label="时间" min-width="160">
+              <template #default="{ row }">{{ formatDateTime(row.occurredAt) }}</template>
+            </el-table-column>
+            <el-table-column label="账户" width="90">
+              <template #default="{ row }">{{ walletLabel(row.walletType) }}</template>
+            </el-table-column>
+            <el-table-column label="类型" min-width="100">
+              <template #default="{ row }">{{ ledgerBizLabel(row.bizType) }}</template>
+            </el-table-column>
+            <el-table-column label="收支" width="110">
+              <template #default="{ row }">
+                <span :class="row.direction === 'credit' ? 'amount-in' : 'amount-out'">
+                  {{ row.direction === 'credit' ? '+' : '-' }}{{ money(row.amountFen) }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="变动后余额" width="110">
+              <template #default="{ row }">{{ money(row.balanceAfterFen) }}</template>
+            </el-table-column>
+            <el-table-column label="关联单号" min-width="130">
+              <template #default="{ row }">
+                {{ row.bizId }}
+                <span v-if="row.sourceCode" class="muted"> · {{ row.sourceCode }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -965,5 +1382,144 @@ const walletDiffRows = computed(() => {
 
 .ml-4 {
   margin-left: 4px;
+}
+
+.stat__value--seq {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.tree-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.tree-toolbar__note {
+  margin-top: 0;
+}
+
+.tree-error {
+  margin-bottom: 8px;
+}
+
+.tree-wrap {
+  min-height: 80px;
+  max-height: 620px;
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.user-tree {
+  background: transparent;
+}
+
+.user-tree :deep(.el-tree-node__content) {
+  height: auto;
+  padding: 2px 0;
+}
+
+.tree-user {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--aurel-line);
+  border-radius: 8px;
+  background: var(--aurel-surface);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.tree-user:hover {
+  border-color: var(--el-color-primary);
+}
+
+.tree-user__id {
+  color: var(--aurel-muted);
+  font-size: 12px;
+}
+
+.tree-user__nick {
+  font-weight: 600;
+}
+
+.tree-user__wallet {
+  color: var(--aurel-muted);
+  font-size: 12px;
+}
+
+.tree-group {
+  color: var(--aurel-muted);
+  font-size: 12px;
+}
+
+.tree-tip {
+  max-width: 360px;
+  line-height: 1.6;
+}
+
+.tree-tip__title {
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.tree-tip__section {
+  margin-top: 6px;
+  color: var(--aurel-muted);
+  font-size: 12px;
+}
+
+.tree-tip__line {
+  font-size: 12px;
+}
+
+.tree-tip__empty {
+  color: var(--aurel-muted);
+  font-size: 12px;
+}
+
+.tree-tip__hint {
+  margin-top: 8px;
+  color: var(--el-color-primary);
+  font-size: 12px;
+}
+
+.user-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.user-detail__identities {
+  display: flex;
+  gap: 8px;
+}
+
+.user-detail__block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.user-detail__title {
+  font-weight: 600;
+}
+
+.amount-in {
+  color: #d14343;
+}
+
+.amount-out {
+  color: #2f8f5b;
+}
+
+.muted {
+  color: var(--aurel-muted);
 }
 </style>
