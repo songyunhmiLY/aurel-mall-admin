@@ -303,12 +303,14 @@ export async function simulationSeedTree(input: {
 }
 
 export async function simulationPurchase(input: {
+  zone?: 'startup' | 'mall'
   userIds?: string[]
   count?: number
   productId?: string
   quantityMin?: number
   quantityMax?: number
 }): Promise<{
+  zone: 'startup' | 'mall'
   product: { id: string; name: string; priceFen: number }
   results: SimulatedPurchaseResult[]
 }> {
@@ -317,6 +319,7 @@ export async function simulationPurchase(input: {
   const product = asRecord(record.product) ?? {}
   const rows = Array.isArray(record.results) ? record.results : []
   return {
+    zone: readString(record.zone) === 'mall' ? 'mall' : 'startup',
     product: {
       id: readString(product.id),
       name: readString(product.name),

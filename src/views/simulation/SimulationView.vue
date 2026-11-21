@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { apiErrorMessage } from '@/api/http'
+import { fetchProducts, type Product } from '@/api/products'
 import {
   clearSimulationClock,
   fetchSimulationOverview,
@@ -53,6 +54,14 @@ const buyMin = ref(1)
 const buyMax = ref(1)
 const buyResults = ref<SimulatedPurchaseResult[]>([])
 
+const mallUserIds = ref('')
+const mallProductId = ref('')
+const mallMin = ref(1)
+const mallMax = ref(1)
+const mallResults = ref<SimulatedPurchaseResult[]>([])
+const mallProducts = ref<Product[]>([])
+const mallProductsLoading = ref(false)
+
 const roleUserId = ref('')
 const roleName = ref<'cofounder' | 'studio' | 'ops_team'>('cofounder')
 const roleMessage = ref('')
@@ -62,7 +71,24 @@ const clockAllowed = computed(() => status.value?.clock.allowed === true)
 
 onMounted(() => {
   void load()
+  void loadMallProducts()
 })
+
+/** 商城商品下拉：只列已上架商品，按管理端排序取前 200 件。 */
+async function loadMallProducts(): Promise<void> {
+  mallProductsLoading.value = true
+  try {
+    const page = await fetchProducts({ zone: 'mall', status: 'on', page: 1, pageSize: 200 })
+    mallProducts.value = page.items
+    if (mallProducts.value.length > 0 && !mallProductId.value) {
+      mallProductId.value = mallProducts.value[0]!.id
+    }
+  } catch (error) {
+    actionError.value = apiErrorMessage(error, '读取会员商城商品失败')
+  } finally {
+    mallProductsLoading.value = false
+  }
+}
 
 async function load(): Promise<void> {
   loading.value = true
@@ -255,12 +281,17 @@ function onSeedTree(): void {
   }
 }
 
+/** 逗号（中英文）或空白分隔的用户编号列表。 */
+function parseUserIds(text: string): string[] {
+  return text
+    .split(/[,，\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
 function onPurchase(): void {
   void run(async () => {
-    const ids = buyUserIds.value
-      .split(/[,，\s]+/)
-      .map((item) => item.trim())
-      .filter(Boolean)
+    const ids = parseUserIds(buyUserIds.value)
     const productId = buyProductId.value.trim()
     const result = await simulationPurchase({
       ...(ids.length > 0 ? { userIds: ids } : { count: buyCount.value ?? 1 }),
@@ -272,6 +303,36 @@ function onPurchase(): void {
     await reloadTimeline()
     const ok = result.results.filter((item) => item.ok).length
     ElMessage.success(`已用「${result.product.name}」下了 ${ok} 单`)
+  })
+}
+
+function onPurchaseMall(): void {
+  const ids = parseUserIds(mallUserIds.value)
+  if (ids.length === 0) {
+    actionError.value = '请填写要下单的会员编号（逗号或换行分隔）'
+    return
+  }
+  if (!mallProductId.value) {
+    actionError.value = '请选择会员商城商品'
+    return
+  }
+  void run(async () => {
+    const result = await simulationPurchase({
+      zone: 'mall',
+      userIds: ids,
+      productId: mallProductId.value,
+      quantityMin: mallMin.value,
+      quantityMax: mallMax.value,
+    })
+    mallResults.value = result.results
+    await reloadTimeline()
+    const ok = result.results.filter((item) => item.ok).length
+    const failed = result.results.length - ok
+    ElMessage.success(
+      failed > 0
+        ? `已用「${result.product.name}」下了 ${ok} 单，${failed} 单失败`
+        : `已用「${result.product.name}」下了 ${ok} 单`,
+    )
   })
 }
 
@@ -620,6 +681,77 @@ const walletDiffRows = computed(() => {
           </el-table>
         </el-tab-pane>
 
+        <el-tab-pane label="批量购买会员商城">
+          <el-form label-width="110px" class="action-form">
+            <el-form-item label="指定用户">
+              <el-input
+                v-model="mallUserIds"
+                type="textarea"
+                :rows="2"
+                placeholder="会员编号，逗号或换行分隔，例如 69,70,71；只有已入座会员才能下商城单"
+              />
+            </el-form-item>
+            <el-form-item label="商城商品">
+              <el-select
+                v-model="mallProductId"
+                filterable
+                placeholder="选择已上架的会员商城商品"
+                class="product-select"
+                :loading="mallProductsLoading"
+              >
+                <el-option
+                  v-for="item in mallProducts"
+                  :key="item.id"
+                  :label="`${item.name}（${yuan(item.priceFen)}）`"
+                  :value="item.id"
+                />
+              </el-select>
+              <el-button class="ml-4" :disabled="mallProductsLoading" @click="loadMallProducts">
+                刷新
+              </el-button>
+            </el-form-item>
+            <el-form-item label="数量区间">
+              <el-input-number v-model="mallMin" :min="1" :max="99" />
+              <span class="range-sep">至</span>
+              <el-input-number v-model="mallMax" :min="1" :max="99" />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :disabled="busy" @click="onPurchaseMall">
+                下单并模拟支付
+              </el-button>
+            </el-form-item>
+          </el-form>
+          <p v-if="mallProducts.length === 0" class="tip">
+            还没有已上架的会员商城商品，请先到「商品」页创建并上架。
+          </p>
+          <p class="tip">
+            商城单只有会员（已入座）可以下单：支付顺序为消费金 → 可提现余额 →
+            微信，沙箱支付会把剩余金额置为已付。商城单不报单、不进市场树、不参与分红。
+          </p>
+          <el-table
+            v-if="mallResults.length"
+            :data="mallResults"
+            size="small"
+            border
+            class="result-table"
+          >
+            <el-table-column prop="nickname" label="用户" min-width="140" />
+            <el-table-column prop="quantity" label="数量" width="80" />
+            <el-table-column label="实付" width="120">
+              <template #default="{ row }">{{ yuan(row.payAmountFen) }}</template>
+            </el-table-column>
+            <el-table-column label="订单状态" width="120">
+              <template #default="{ row }">{{ row.status ?? '-' }}</template>
+            </el-table-column>
+            <el-table-column label="结果" min-width="200">
+              <template #default="{ row }">
+                <span v-if="row.ok">{{ row.orderNo }}</span>
+                <span v-else class="error-text">{{ row.error }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+
         <el-tab-pane label="任命角色">
           <el-form label-width="110px" class="action-form">
             <el-form-item label="会员编号">
@@ -795,6 +927,10 @@ const walletDiffRows = computed(() => {
 
 .role-select {
   width: 260px;
+}
+
+.product-select {
+  width: 380px;
 }
 
 .result-table {
