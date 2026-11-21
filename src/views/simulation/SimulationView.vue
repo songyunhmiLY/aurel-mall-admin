@@ -16,8 +16,10 @@ import {
   simulationPurchase,
   simulationRegister,
   simulationRole,
+  simulationSeedTree,
   simulationStep,
   type SimulatedPurchaseResult,
+  type SimulatedTreeNode,
   type SimulationEvent,
   type SimulationOverview,
   type SimulationStatus,
@@ -37,8 +39,12 @@ const stepMinutesInput = ref<number | undefined>(undefined)
 const advanceTarget = ref<Date | null>(null)
 
 const registerCount = ref(20)
-const registerPrefix = ref('仿真用户')
 const registerInviter = ref('')
+
+const seedLayersText = ref('3, 9, 27')
+const seedReset = ref(true)
+const seedProductId = ref('')
+const seedResults = ref<SimulatedTreeNode[]>([])
 
 const buyUserIds = ref('')
 const buyCount = ref<number | undefined>(undefined)
@@ -201,12 +207,52 @@ function onRegister(): void {
     const inviter = registerInviter.value.trim()
     const result = await simulationRegister({
       count: registerCount.value,
-      nicknamePrefix: registerPrefix.value.trim() || undefined,
       ...(inviter ? { inviterUserId: inviter } : {}),
     })
     await reloadTimeline()
-    ElMessage.success(`已注册 ${result.created.length} 人，挂在邀请人 ${result.inviterId} 下`)
+    ElMessage.success(
+      `已注册 ${result.created.length} 人（昵称 ${result.created[0]?.nickname ?? ''} 等，挂在 ${result.inviterPath} 下）`,
+    )
   })
+}
+
+/** 生成演示市场树：默认清空后重建 3+9+27 三层满树，昵称按树路径回填。 */
+function onSeedTree(): void {
+  const layers = seedLayersText.value
+    .split(/[,，\s]+/)
+    .map((item) => Number.parseInt(item, 10))
+    .filter((item) => Number.isInteger(item) && item > 0)
+  if (layers.length === 0) {
+    actionError.value = '请填写每层节点数，如 3, 9, 27'
+    return
+  }
+  const doSeed = (): void => {
+    void run(async () => {
+      const productId = seedProductId.value.trim()
+      const result = await simulationSeedTree({
+        layers,
+        reset: seedReset.value,
+        ...(productId ? { productId } : {}),
+      })
+      seedResults.value = result.created
+      await reloadTimeline()
+      const ok = result.created.filter((item) => item.ok).length
+      ElMessage.success(
+        `已生成 ${ok} 个节点（${result.layers.join('+')}），商品「${result.product.name}」`,
+      )
+    })
+  }
+  if (seedReset.value) {
+    void ElMessageBox.confirm(
+      '将先清空全部业务数据（订单、钱包、市场树、报单、分红、角色与会员，保留根账户与商品），再生成演示树。确定继续？',
+      '生成演示市场树',
+      { confirmButtonText: '生成', cancelButtonText: '取消', type: 'warning' },
+    )
+      .then(doSeed)
+      .catch(() => {})
+  } else {
+    doSeed()
+  }
 }
 
 function onPurchase(): void {
@@ -455,9 +501,6 @@ const walletDiffRows = computed(() => {
             <el-form-item label="人数">
               <el-input-number v-model="registerCount" :min="1" :max="200" />
             </el-form-item>
-            <el-form-item label="昵称前缀">
-              <el-input v-model="registerPrefix" placeholder="默认「仿真用户」" />
-            </el-form-item>
             <el-form-item label="邀请人编号">
               <el-input
                 v-model="registerInviter"
@@ -469,8 +512,54 @@ const walletDiffRows = computed(() => {
             </el-form-item>
           </el-form>
           <p class="tip">
-            新用户是普通注册用户，没有邀请码；下过创业专区订单并完成支付后才会入座成为会员。
+            昵称按演练命名规则生成：L{层}·{邀请路径}{小写序号}·邀{邀请人路径}，如根账户下注册得到
+            L1·a·邀R、L1·b·邀R。每人自带统一支付密码
+            123456。新用户没有邀请码，下过创业专区订单并完成支付后才会入座成为会员。
           </p>
+        </el-tab-pane>
+
+        <el-tab-pane label="生成演示市场树">
+          <el-form label-width="110px" class="action-form">
+            <el-form-item label="每层节点数">
+              <el-input v-model="seedLayersText" placeholder="3, 9, 27" />
+            </el-form-item>
+            <el-form-item label="先清空数据">
+              <el-switch v-model="seedReset" />
+            </el-form-item>
+            <el-form-item label="商品编号">
+              <el-input v-model="seedProductId" placeholder="留空取创业专区第一件上架商品" />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :disabled="busy" @click="onSeedTree">生成</el-button>
+            </el-form-item>
+          </el-form>
+          <p class="tip">
+            全部挂在根账户下：入座自动落在邀请人子树的最浅空位，根满后逐层下探，树形是层序满树（3+9+27），而邀请人全部是根——正好演示邀请关系与树上级相互独立。
+            昵称按实际席位回填：L{层}·{路径}·父{父路径}·邀R，路径字母 A/B/C
+            =左/中/右，根=R。每人买一件创业专区商品并带统一支付密码 123456。
+          </p>
+          <el-table
+            v-if="seedResults.length"
+            :data="seedResults"
+            size="small"
+            border
+            class="result-table"
+          >
+            <el-table-column prop="layer" label="层" width="60" />
+            <el-table-column prop="nickname" label="昵称" min-width="180" />
+            <el-table-column prop="treePath" label="树路径" width="110" />
+            <el-table-column prop="slot" label="位次" width="70">
+              <template #default="{ row }">
+                {{ ['', '左', '中', '右'][row.slot] ?? row.slot }}
+              </template>
+            </el-table-column>
+            <el-table-column label="订单" min-width="160">
+              <template #default="{ row }">
+                <span v-if="row.ok">{{ row.orderNo }}</span>
+                <span v-else class="error-text">未入座</span>
+              </template>
+            </el-table-column>
+          </el-table>
         </el-tab-pane>
 
         <el-tab-pane label="批量购买创业专区">

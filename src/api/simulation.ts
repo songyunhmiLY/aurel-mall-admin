@@ -34,6 +34,7 @@ export type SimulationAction =
   | 'register'
   | 'purchase'
   | 'role'
+  | 'seed_tree'
   | 'reset'
   | 'reset_data'
 
@@ -90,6 +91,7 @@ const ACTION_LABELS: Record<SimulationAction, string> = {
   register: '批量注册',
   purchase: '批量购买',
   role: '任命角色',
+  seed_tree: '生成市场树',
   reset: '清空时间轴',
   reset_data: '重置业务数据',
 }
@@ -227,18 +229,76 @@ export async function simulationAdvance(to: string): Promise<{
 
 export async function simulationRegister(input: {
   count: number
-  nicknamePrefix?: string
   inviterUserId?: string
-}): Promise<{ created: { id: string; nickname: string }[]; inviterId: string }> {
+}): Promise<{
+  created: { id: string; nickname: string; invitePath: string }[]
+  inviterId: string
+  inviterPath: string
+}> {
   const { data } = await http.post<unknown>('/admin/simulation/register', input)
   const record = asRecord(data) ?? {}
   const rows = Array.isArray(record.created) ? record.created : []
   return {
     created: rows.map((item) => {
       const row = asRecord(item) ?? {}
-      return { id: readString(row.id), nickname: readString(row.nickname) }
+      return {
+        id: readString(row.id),
+        nickname: readString(row.nickname),
+        invitePath: readString(row.invitePath),
+      }
     }),
     inviterId: readString(record.inviterId),
+    inviterPath: readString(record.inviterPath),
+  }
+}
+
+export interface SimulatedTreeNode {
+  userId: string
+  nickname: string
+  treePath: string
+  parentPath: string
+  slot: number
+  layer: number
+  invitedBy: string
+  orderNo: string | null
+  ok: boolean
+}
+
+/** 生成演示市场树：默认清空后重建 3+9+27 三层满树。 */
+export async function simulationSeedTree(input: {
+  layers?: number[]
+  reset?: boolean
+  productId?: string
+}): Promise<{
+  reset: boolean
+  layers: number[]
+  product: { id: string; name: string }
+  created: SimulatedTreeNode[]
+}> {
+  const { data } = await http.post<unknown>('/admin/simulation/seed-tree', input)
+  const record = asRecord(data) ?? {}
+  const product = asRecord(record.product) ?? {}
+  const rows = Array.isArray(record.created) ? record.created : []
+  return {
+    reset: record.reset === true,
+    layers: Array.isArray(record.layers)
+      ? record.layers.filter((value): value is number => typeof value === 'number')
+      : [],
+    product: { id: readString(product.id), name: readString(product.name) },
+    created: rows.map((item) => {
+      const row = asRecord(item) ?? {}
+      return {
+        userId: readString(row.userId),
+        nickname: readString(row.nickname),
+        treePath: readString(row.treePath),
+        parentPath: readString(row.parentPath),
+        slot: typeof row.slot === 'number' ? row.slot : 0,
+        layer: typeof row.layer === 'number' ? row.layer : 0,
+        invitedBy: readString(row.invitedBy),
+        orderNo: typeof row.orderNo === 'string' ? row.orderNo : null,
+        ok: row.ok === true,
+      }
+    }),
   }
 }
 
