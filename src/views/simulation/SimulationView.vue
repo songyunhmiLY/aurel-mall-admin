@@ -61,6 +61,11 @@ const mallMax = ref(1)
 const mallResults = ref<SimulatedPurchaseResult[]>([])
 const mallProducts = ref<Product[]>([])
 const mallProductsLoading = ref(false)
+const mallProductsError = ref('')
+
+/** 商品列表接口单页上限 100，最多翻 5 页（500 件）足够演练使用。 */
+const MALL_PRODUCT_PAGE_SIZE = 100
+const MALL_PRODUCT_MAX_PAGES = 5
 
 const roleUserId = ref('')
 const roleName = ref<'cofounder' | 'studio' | 'ops_team'>('cofounder')
@@ -74,17 +79,30 @@ onMounted(() => {
   void loadMallProducts()
 })
 
-/** 商城商品下拉：只列已上架商品，按管理端排序取前 200 件。 */
+/** 商城商品下拉：只列已上架商品，按管理端排序分页拉取（接口单页上限 100）。 */
 async function loadMallProducts(): Promise<void> {
   mallProductsLoading.value = true
+  mallProductsError.value = ''
   try {
-    const page = await fetchProducts({ zone: 'mall', status: 'on', page: 1, pageSize: 200 })
-    mallProducts.value = page.items
-    if (mallProducts.value.length > 0 && !mallProductId.value) {
-      mallProductId.value = mallProducts.value[0]!.id
+    const collected: Product[] = []
+    for (let page = 1; page <= MALL_PRODUCT_MAX_PAGES; page += 1) {
+      const chunk = await fetchProducts({
+        zone: 'mall',
+        status: 'on',
+        page,
+        pageSize: MALL_PRODUCT_PAGE_SIZE,
+      })
+      collected.push(...chunk.items)
+      if (chunk.items.length < MALL_PRODUCT_PAGE_SIZE || collected.length >= chunk.total) {
+        break
+      }
+    }
+    mallProducts.value = collected
+    if (collected.length > 0 && !mallProductId.value) {
+      mallProductId.value = collected[0]!.id
     }
   } catch (error) {
-    actionError.value = apiErrorMessage(error, '读取会员商城商品失败')
+    mallProductsError.value = apiErrorMessage(error, '读取会员商城商品失败')
   } finally {
     mallProductsLoading.value = false
   }
@@ -692,23 +710,28 @@ const walletDiffRows = computed(() => {
               />
             </el-form-item>
             <el-form-item label="商城商品">
-              <el-select
-                v-model="mallProductId"
-                filterable
-                placeholder="选择已上架的会员商城商品"
-                class="product-select"
-                :loading="mallProductsLoading"
-              >
-                <el-option
-                  v-for="item in mallProducts"
-                  :key="item.id"
-                  :label="`${item.name}（${yuan(item.priceFen)}）`"
-                  :value="item.id"
-                />
-              </el-select>
-              <el-button class="ml-4" :disabled="mallProductsLoading" @click="loadMallProducts">
-                刷新
-              </el-button>
+              <div class="product-picker">
+                <div class="product-picker__row">
+                  <el-select
+                    v-model="mallProductId"
+                    filterable
+                    placeholder="选择已上架的会员商城商品"
+                    class="product-select"
+                    :loading="mallProductsLoading"
+                  >
+                    <el-option
+                      v-for="item in mallProducts"
+                      :key="item.id"
+                      :label="`${item.name}（${yuan(item.priceFen)}）`"
+                      :value="item.id"
+                    />
+                  </el-select>
+                  <el-button class="ml-4" :disabled="mallProductsLoading" @click="loadMallProducts">
+                    刷新
+                  </el-button>
+                </div>
+                <p v-if="mallProductsError" class="error-text tip">{{ mallProductsError }}</p>
+              </div>
             </el-form-item>
             <el-form-item label="数量区间">
               <el-input-number v-model="mallMin" :min="1" :max="99" />
@@ -931,6 +954,11 @@ const walletDiffRows = computed(() => {
 
 .product-select {
   width: 380px;
+}
+
+.product-picker__row {
+  display: flex;
+  align-items: center;
 }
 
 .result-table {
