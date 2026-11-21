@@ -823,8 +823,8 @@ const walletDiffRows = computed(() => {
       >
       <el-button :disabled="busy" type="danger" @click="onResetData">重置业务数据</el-button>
       <p class="tip">
-        重置会清空订单、支付、钱包、市场树、报单、分红、角色与全部会员（根账户与商品保留）。
-        操作不可恢复，请只在演练库使用。
+        重置会清空订单、支付、钱包、市场树、报单、分红、角色与全部会员（根账户与商品保留），
+        时间轴一并清空、仿真起点回到当前时间。操作不可恢复，请只在演练库使用。
       </p>
     </el-card>
   </div>
