@@ -81,6 +81,9 @@ function showDateLabel(index: number, total: number): boolean {
       <li><i class="swatch swatch--startup" />创业专区应付</li>
       <li><i class="swatch swatch--mall" />会员商城应付</li>
     </ul>
+    <p class="hint">
+      应付是已支付订单的应付总额（含运费），不等于实际收到的现金。与右侧「微信实收」的差额为积分或可提现/消费金抵扣。
+    </p>
     <el-table :data="trend" empty-text="没有日期" max-height="280">
       <el-table-column prop="bizDate" label="自然日" min-width="120" />
       <el-table-column label="创业专区应付" min-width="140">
