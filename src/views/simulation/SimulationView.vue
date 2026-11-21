@@ -14,11 +14,11 @@ import {
   simulationActionLabel,
   simulationAdvance,
   simulationPurchase,
+  simulationRedPacketSignup,
   simulationRegister,
   simulationRole,
-  simulationSeedTree,
   type SimulatedPurchaseResult,
-  type SimulatedTreeNode,
+  type SimulatedRedPacketSignupResult,
   type SimulationEvent,
   type SimulationOverview,
   type SimulationStatus,
@@ -37,10 +37,8 @@ const advanceTarget = ref<Date | null>(null)
 const registerCount = ref(20)
 const registerInviter = ref('')
 
-const seedLayersText = ref('3, 9, 27')
-const seedReset = ref(true)
-const seedProductId = ref('')
-const seedResults = ref<SimulatedTreeNode[]>([])
+const redPacketUserIds = ref('')
+const redPacketResults = ref<SimulatedRedPacketSignupResult[]>([])
 
 const buyUserIds = ref('')
 const buyCount = ref<number | undefined>(undefined)
@@ -238,43 +236,24 @@ function onRegister(): void {
   })
 }
 
-/** 生成演示市场树：默认清空后重建 3+9+27 三层满树，昵称按树路径回填。 */
-function onSeedTree(): void {
-  const layers = seedLayersText.value
-    .split(/[,，\s]+/)
-    .map((item) => Number.parseInt(item, 10))
-    .filter((item) => Number.isInteger(item) && item > 0)
-  if (layers.length === 0) {
-    actionError.value = '请填写每层节点数，如 3, 9, 27'
+/**
+ * 红包报名演示：走真实报名接口（会员且红包额度未领满才报得上），报名时间就是
+ * 当前仿真时刻。名单留空 = 对全部在籍会员一键报名。
+ */
+function onRedPacketSignup(all: boolean): void {
+  const ids = parseUserIds(redPacketUserIds.value)
+  if (!all && ids.length === 0) {
+    actionError.value = '请填写要报名的用户编号，或点「全部会员报名」'
     return
   }
-  const doSeed = (): void => {
-    void run(async () => {
-      const productId = seedProductId.value.trim()
-      const result = await simulationSeedTree({
-        layers,
-        reset: seedReset.value,
-        ...(productId ? { productId } : {}),
-      })
-      seedResults.value = result.created
-      await reloadTimeline()
-      const ok = result.created.filter((item) => item.ok).length
-      ElMessage.success(
-        `已生成 ${ok} 个节点（${result.layers.join('+')}），商品「${result.product.name}」`,
-      )
-    })
-  }
-  if (seedReset.value) {
-    void ElMessageBox.confirm(
-      '将先清空全部业务数据（订单、钱包、市场树、报单、分红、角色与会员，保留根账户与商品），再生成演示树。确定继续？',
-      '生成演示市场树',
-      { confirmButtonText: '生成', cancelButtonText: '取消', type: 'warning' },
+  void run(async () => {
+    const result = await simulationRedPacketSignup(all ? {} : { userIds: ids })
+    redPacketResults.value = result.results
+    await reloadTimeline()
+    ElMessage.success(
+      `报名成功 ${result.signed} 人，已报过 ${result.alreadySigned} 人，未报上 ${result.skipped} 人`,
     )
-      .then(doSeed)
-      .catch(() => {})
-  } else {
-    doSeed()
-  }
+  })
 }
 
 /** 逗号（中英文）或空白分隔的用户编号列表。 */
@@ -559,45 +538,46 @@ const walletDiffRows = computed(() => {
           </p>
         </el-tab-pane>
 
-        <el-tab-pane label="生成演示市场树">
+        <el-tab-pane label="红包报名">
           <el-form label-width="110px" class="action-form">
-            <el-form-item label="每层节点数">
-              <el-input v-model="seedLayersText" placeholder="3, 9, 27" />
-            </el-form-item>
-            <el-form-item label="先清空数据">
-              <el-switch v-model="seedReset" />
-            </el-form-item>
-            <el-form-item label="商品编号">
-              <el-input v-model="seedProductId" placeholder="留空取创业专区第一件上架商品" />
+            <el-form-item label="指定用户">
+              <el-input
+                v-model="redPacketUserIds"
+                type="textarea"
+                :rows="2"
+                placeholder="会员编号，逗号或换行分隔；留空则用下面的全部报名"
+              />
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" :disabled="busy" @click="onSeedTree">生成</el-button>
+              <el-button :disabled="busy" @click="onRedPacketSignup(false)">按名单报名</el-button>
+              <el-button type="primary" :disabled="busy" @click="onRedPacketSignup(true)">
+                全部会员报名
+              </el-button>
             </el-form-item>
           </el-form>
           <p class="tip">
-            全部挂在根账户下：入座自动落在邀请人子树的最浅空位，根满后逐层下探，树形是层序满树（3+9+27），而邀请人全部是根——正好演示邀请关系与树上级相互独立。
-            昵称按实际席位回填：L{层}·{路径}·父{父路径}·邀R，路径字母 A/B/C
-            =左/中/右，根=R。每人买一件创业专区商品并带统一支付密码 123456。
+            走真实报名接口：会员且红包额度未领满才报得上，报名时间为当前仿真时刻（推进到几点就记几点）。
+            要演示红包结算：先批量购买创业专区 → 全部会员报名 → 逐日推进到次日报单钟点，红包按当日创业销售额计提分红。
           </p>
           <el-table
-            v-if="seedResults.length"
-            :data="seedResults"
+            v-if="redPacketResults.length"
+            :data="redPacketResults"
             size="small"
             border
             class="result-table"
           >
-            <el-table-column prop="layer" label="层" width="60" />
-            <el-table-column prop="nickname" label="昵称" min-width="180" />
-            <el-table-column prop="treePath" label="树路径" width="110" />
-            <el-table-column prop="slot" label="位次" width="70">
+            <el-table-column prop="userId" label="编号" width="90" />
+            <el-table-column prop="nickname" label="昵称" min-width="160" />
+            <el-table-column label="结果" min-width="200">
               <template #default="{ row }">
-                {{ ['', '左', '中', '右'][row.slot] ?? row.slot }}
-              </template>
-            </el-table-column>
-            <el-table-column label="订单" min-width="160">
-              <template #default="{ row }">
-                <span v-if="row.ok">{{ row.orderNo }}</span>
-                <span v-else class="error-text">未入座</span>
+                <el-tag v-if="row.outcome === 'signed'" type="success" size="small">报名成功</el-tag>
+                <el-tag v-else-if="row.outcome === 'already'" type="info" size="small">
+                  当天已报名
+                </el-tag>
+                <template v-else>
+                  <el-tag type="danger" size="small">未报上</el-tag>
+                  <span class="error-text ml-4">{{ row.error }}</span>
+                </template>
               </template>
             </el-table-column>
           </el-table>
