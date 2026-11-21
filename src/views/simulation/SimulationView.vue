@@ -120,6 +120,12 @@ const LEDGER_BIZ_LABELS: Record<string, string> = {
   filing_settlement: '幸运返还',
   withdrawal_payout: '提现打款',
   consumption_transfer: '消费金划转',
+  startup_sales: '创业销售奖励',
+  startup_points: '创业积分奖励',
+  mall_sales: '商城销售奖励',
+  mall_points: '商城积分奖励',
+  position_dividend: '职位分红',
+  red_packet: '红包分红',
 }
 
 function identityLabel(value: string): string {
