@@ -86,8 +86,9 @@ function statusTag(status: string): 'success' | 'danger' | 'info' {
     </header>
     <p class="hint">
       可按用户 ID、昵称或手机号查询。昵称按包含匹配，手机号和 ID
-      按完整值匹配。累计实付为微信真金白银支付（已支付未退款订单 + 联合创始人开通），
-      钱包积分部分不计入。创业单/商城单为对应专区已支付订单数，邀请人数为直接邀请的下级总数。
+      按完整值匹配。累计实付（微信）只统计实际从微信收到的钱：已支付未退款订单的微信部分
+      加联合创始人开通支付，积分/余额抵扣不计入；它不等于订单应付，也不含运费以外的其他口径。
+      创业单/商城单为对应专区已支付订单数，邀请人数为直接邀请的下级总数。
     </p>
     <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" />
 
@@ -130,7 +131,7 @@ function statusTag(status: string): 'success' | 'danger' | 'info' {
       <el-table-column label="手机号" min-width="130">
         <template #default="{ row }">{{ row.phone || '—' }}</template>
       </el-table-column>
-      <el-table-column label="累计实付" min-width="110" align="right">
+      <el-table-column label="累计实付（微信）" min-width="130" align="right">
         <template #default="{ row }">{{ formatFen(row.paidWechatFen) }}</template>
       </el-table-column>
       <el-table-column label="创业单" width="80" align="right">
