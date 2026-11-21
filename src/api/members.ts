@@ -10,6 +10,11 @@ export interface MemberSummary {
   inviteCode: string
   member: boolean
   kycVerified: boolean
+  /** 已支付且未关闭订单的微信实付合计（分），含联合创始人开通支付。 */
+  paidWechatFen: number
+  startupPaidOrders: number
+  mallPaidOrders: number
+  inviteeCount: number
   createdAt: string
   updatedAt: string
 }
@@ -78,6 +83,16 @@ export function memberFlagLabel(member: boolean): string {
   return member ? '会员' : '非会员'
 }
 
+/** 分转元显示。 */
+export function formatFen(fen: number): string {
+  return `¥${(fen / 100).toFixed(2)}`
+}
+
+function readCount(record: Record<string, unknown> | null, key: string): number {
+  const value = record?.[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
 function readMember(data: unknown): MemberSummary {
   const record = asRecord(data)
   const id = readId(record?.id)
@@ -98,6 +113,10 @@ function readMember(data: unknown): MemberSummary {
     inviteCode: readNullableString(record.inviteCode),
     member: record.member,
     kycVerified: record.kycVerified,
+    paidWechatFen: readCount(record, 'paidWechatFen'),
+    startupPaidOrders: readCount(record, 'startupPaidOrders'),
+    mallPaidOrders: readCount(record, 'mallPaidOrders'),
+    inviteeCount: readCount(record, 'inviteeCount'),
     createdAt: readString(record.createdAt),
     updatedAt: readString(record.updatedAt),
   }

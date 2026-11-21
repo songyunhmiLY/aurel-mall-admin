@@ -3,7 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { apiErrorMessage } from '@/api/http'
-import { fetchMembers, memberFlagLabel, memberStatusLabel, type MemberSummary } from '@/api/members'
+import { fetchMembers, formatFen, memberFlagLabel, memberStatusLabel, type MemberSummary } from '@/api/members'
 import { routeQueryText } from '@/router/query'
 import MemberDetailDrawer from './MemberDetailDrawer.vue'
 
@@ -86,7 +86,8 @@ function statusTag(status: string): 'success' | 'danger' | 'info' {
     </header>
     <p class="hint">
       可按用户 ID、昵称或手机号查询。昵称按包含匹配，手机号和 ID
-      按完整值匹配。停用后该用户不能登录。
+      按完整值匹配。累计实付为微信真金白银支付（已支付未退款订单 + 联合创始人开通），
+      钱包积分部分不计入。创业单/商城单为对应专区已支付订单数，邀请人数为直接邀请的下级总数。
     </p>
     <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" />
 
@@ -128,6 +129,18 @@ function statusTag(status: string): 'success' | 'danger' | 'info' {
       </el-table-column>
       <el-table-column label="手机号" min-width="130">
         <template #default="{ row }">{{ row.phone || '—' }}</template>
+      </el-table-column>
+      <el-table-column label="累计实付" min-width="110" align="right">
+        <template #default="{ row }">{{ formatFen(row.paidWechatFen) }}</template>
+      </el-table-column>
+      <el-table-column label="创业单" width="80" align="right">
+        <template #default="{ row }">{{ row.startupPaidOrders }}</template>
+      </el-table-column>
+      <el-table-column label="商城单" width="80" align="right">
+        <template #default="{ row }">{{ row.mallPaidOrders }}</template>
+      </el-table-column>
+      <el-table-column label="邀请人数" width="90" align="right">
+        <template #default="{ row }">{{ row.inviteeCount }}</template>
       </el-table-column>
       <el-table-column label="是否会员" width="100">
         <template #default="{ row }">{{ memberFlagLabel(row.member) }}</template>
