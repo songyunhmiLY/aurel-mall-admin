@@ -677,8 +677,8 @@ const walletDiffRows = computed(() => {
           </div>
         </div>
         <div class="stat">
-          <div class="stat__label">未参与公排订单</div>
-          <div class="stat__value">{{ overview?.filings.unfiledOrders ?? 0 }} 单</div>
+          <div class="stat__label">未参与公排子单</div>
+          <div class="stat__value">{{ overview?.filings.unfiledSubOrders ?? 0 }} 个</div>
         </div>
       </div>
     </el-card>

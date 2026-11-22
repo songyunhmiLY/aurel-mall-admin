@@ -57,8 +57,8 @@ export interface SimulationOverview {
   users: { total: number; members: number }
   orders: { total: number; paid: number; paidAmountFen: number }
   roles: { cofounders: number; studios: number; opsTeam: number }
-  /** 全网公排：已完成报单数、已返现的序号、尚未报单的创业订单数。 */
-  filings: { completed: number; settledSequences: number[]; unfiledOrders: number }
+  /** 全网公排：已完成报单数、已返现的序号、尚未参与公排的创业子单数。 */
+  filings: { completed: number; settledSequences: number[]; unfiledSubOrders: number }
   businessDate: string
 }
 
@@ -264,7 +264,7 @@ export async function fetchSimulationOverview(): Promise<SimulationOverview> {
     filings: {
       completed: num(filingStats.completed),
       settledSequences: readNumberList(filingStats.settledSequences),
-      unfiledOrders: num(filingStats.unfiledOrders),
+      unfiledSubOrders: num(filingStats.unfiledSubOrders),
     },
     businessDate: readString(record.businessDate),
   }
