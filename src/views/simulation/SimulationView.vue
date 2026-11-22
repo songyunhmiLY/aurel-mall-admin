@@ -737,6 +737,14 @@ const walletDiffRows = computed(() => {
         </el-form-item>
       </el-form>
       <el-alert v-if="actionError" type="error" :title="actionError" show-icon :closable="false" />
+      <el-divider content-position="left">危险操作</el-divider>
+      <el-button :disabled="busy" type="danger" plain @click="onResetTimeline">清空时间轴</el-button>
+      <el-button :disabled="busy" type="danger" @click="onResetData">重置业务数据</el-button>
+      <p class="tip">
+        清空时间轴只清演练日志（最多 500 条）并把仿真起点拉回真实时间，不动业务数据。
+        重置会清空订单、支付、钱包、市场树、报单、分红、角色与全部会员（根账户与商品保留），
+        时间轴一并清空、仿真起点回到当前时间。操作不可恢复，请只在演练库使用。
+      </p>
     </el-card>
 
     <el-card shadow="never" class="block">
@@ -1130,18 +1138,6 @@ const walletDiffRows = computed(() => {
       </el-descriptions>
     </el-card>
 
-    <el-card shadow="never" class="block danger-block">
-      <template #header>危险操作</template>
-      <el-button :disabled="busy" type="danger" plain @click="onResetTimeline"
-        >清空时间轴</el-button
-      >
-      <el-button :disabled="busy" type="danger" @click="onResetData">重置业务数据</el-button>
-      <p class="tip">
-        重置会清空订单、支付、钱包、市场树、报单、分红、角色与全部会员（根账户与商品保留），
-        时间轴一并清空、仿真起点回到当前时间。操作不可恢复，请只在演练库使用。
-      </p>
-    </el-card>
-
     <el-drawer
       v-model="detailVisible"
       :title="detailUser ? `#${detailUser.userId} ${detailUser.nickname}` : '用户详情'"
@@ -1368,10 +1364,6 @@ const walletDiffRows = computed(() => {
 
 .error-text {
   color: #d14343;
-}
-
-.danger-block {
-  border-color: #f0c9c9;
 }
 
 .clock-value {
