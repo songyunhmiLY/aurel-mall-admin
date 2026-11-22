@@ -372,8 +372,6 @@ function onTabChange(name: string | number): void {
 
 /** 快捷步长：点一次在编辑框时间上叠加，编辑框为空则以仿真起点为基准。 */
 const ADVANCE_SHORTCUTS = [
-  { label: '10 分钟', minutes: 10 },
-  { label: '30 分钟', minutes: 30 },
   { label: '1 小时', minutes: 60 },
   { label: '1 天', minutes: 1440 },
 ] as const
@@ -728,10 +726,8 @@ const walletDiffRows = computed(() => {
               >
                 +{{ item.label }}
               </el-button>
+              <el-button type="primary" :disabled="busy" @click="onAdvance">推进</el-button>
             </div>
-            <el-button type="primary" :disabled="busy" @click="onAdvance">
-              推进（逐日执行公排与核算）
-            </el-button>
           </div>
           <p class="tip">快捷按钮在当前编辑框时间上累加；编辑框为空时从仿真起点起算。</p>
         </el-form-item>
@@ -1302,7 +1298,7 @@ const walletDiffRows = computed(() => {
   margin-right: 12px;
 }
 
-/* 逐日推进行：时间框 + 快捷步进 + 推进按钮，窄屏时整组换行。 */
+/* 逐日推进行：第一行时间框，第二行快捷步进 + 推进按钮。 */
 .advance-row {
   display: flex;
   align-items: center;
@@ -1318,6 +1314,7 @@ const walletDiffRows = computed(() => {
 .advance-quick {
   display: flex;
   align-items: center;
+  flex-basis: 100%;
   gap: 8px;
 }
 
