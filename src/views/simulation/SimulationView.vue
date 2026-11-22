@@ -436,7 +436,12 @@ function onRegister(): void {
  * 当前仿真时刻。名单留空 = 对全部在籍会员一键报名。
  */
 function onRedPacketSignup(all: boolean): void {
-  const ids = parseUserIds(redPacketUserIds.value)
+  const parsed = parseUserIds(redPacketUserIds.value)
+  if (!all && parsed.error) {
+    actionError.value = parsed.error
+    return
+  }
+  const ids = parsed.ids
   if (!all && ids.length === 0) {
     actionError.value = '请填写要报名的用户编号，或点「全部会员报名」'
     return
@@ -451,17 +456,61 @@ function onRedPacketSignup(all: boolean): void {
   })
 }
 
-/** 逗号（中英文）或空白分隔的用户编号列表。 */
-function parseUserIds(text: string): string[] {
-  return text
-    .split(/[,，\s]+/)
+/** 单次最多提交的用户编号数，与后端 userIds 的 ArrayMaxSize 一致。 */
+const MAX_USER_IDS = 200
+
+/**
+ * 解析用户编号列表：逗号（中英文）、顿号、分号、空白/换行分隔，支持 `10-20` 闭区间。
+ * 区间两端写成 `20-10` 也接受（自动正序）；编号去重后保持出现顺序。
+ */
+function parseUserIds(text: string): { ids: string[]; error: string | null } {
+  const normalized = text.replace(/\s*[-~—–至到]\s*/g, '-')
+  const tokens = normalized
+    .split(/[,，、;；\s]+/)
     .map((item) => item.trim())
     .filter(Boolean)
+  const ids: string[] = []
+  const seen = new Set<string>()
+  const push = (id: string): void => {
+    if (seen.has(id)) return
+    seen.add(id)
+    ids.push(id)
+  }
+  for (const token of tokens) {
+    const range = /^(\d{1,9})-(\d{1,9})$/.exec(token)
+    if (range) {
+      const start = Number(range[1])
+      const end = Number(range[2])
+      const from = Math.min(start, end)
+      const to = Math.max(start, end)
+      if (to - from + 1 > MAX_USER_IDS) {
+        return {
+          ids: [],
+          error: `区间「${token}」展开后有 ${to - from + 1} 个编号，超过单次上限 ${MAX_USER_IDS} 个`,
+        }
+      }
+      for (let value = from; value <= to; value += 1) push(String(value))
+      continue
+    }
+    if (!/^\d{1,9}$/.test(token)) {
+      return { ids: [], error: `「${token}」不是有效编号，请填数字或用 10-20 表示区间` }
+    }
+    push(token)
+  }
+  if (ids.length > MAX_USER_IDS) {
+    return { ids: [], error: `共 ${ids.length} 个编号，超过单次上限 ${MAX_USER_IDS} 个` }
+  }
+  return { ids, error: null }
 }
 
 function onPurchase(): void {
+  const parsed = parseUserIds(buyUserIds.value)
+  if (parsed.error) {
+    actionError.value = parsed.error
+    return
+  }
   void run(async () => {
-    const ids = parseUserIds(buyUserIds.value)
+    const ids = parsed.ids
     const productId = buyProductId.value.trim()
     const result = await simulationPurchase({
       ...(ids.length > 0 ? { userIds: ids } : { count: buyCount.value ?? 1 }),
@@ -477,9 +526,14 @@ function onPurchase(): void {
 }
 
 function onPurchaseMall(): void {
-  const ids = parseUserIds(mallUserIds.value)
+  const parsed = parseUserIds(mallUserIds.value)
+  if (parsed.error) {
+    actionError.value = parsed.error
+    return
+  }
+  const ids = parsed.ids
   if (ids.length === 0) {
-    actionError.value = '请填写要下单的会员编号（逗号或换行分隔）'
+    actionError.value = '请填写要下单的会员编号（逗号或换行分隔，支持 10-20 区间）'
     return
   }
   if (!mallProductId.value) {
@@ -870,7 +924,7 @@ const walletDiffRows = computed(() => {
                 v-model="redPacketUserIds"
                 type="textarea"
                 :rows="2"
-                placeholder="会员编号，逗号或换行分隔；留空则用下面的全部报名"
+                placeholder="会员编号，逗号或换行分隔，支持 127-140 区间；留空则用下面的全部报名"
               />
             </el-form-item>
             <el-form-item>
@@ -915,7 +969,7 @@ const walletDiffRows = computed(() => {
                 v-model="buyUserIds"
                 type="textarea"
                 :rows="2"
-                placeholder="会员编号，逗号或换行分隔；留空则按下面的人数随机取已入座会员"
+                placeholder="会员编号，逗号或换行分隔，支持 127-140 区间；留空则按下面的人数随机取已入座会员"
               />
             </el-form-item>
             <el-form-item label="随机人数">
@@ -973,7 +1027,7 @@ const walletDiffRows = computed(() => {
                 v-model="mallUserIds"
                 type="textarea"
                 :rows="2"
-                placeholder="会员编号，逗号或换行分隔，例如 69,70,71；只有已入座会员才能下商城单"
+                placeholder="会员编号，逗号或换行分隔，支持 127-140 区间；只有已入座会员才能下商城单"
               />
             </el-form-item>
             <el-form-item label="商城商品">
