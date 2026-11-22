@@ -171,6 +171,8 @@ function formatDateTime(iso: string): string {
 onMounted(() => {
   void load()
   void loadMallProducts()
+  // 用户树独立成卡、始终可见，进页面就拉一次；造数动作在 run() 里自动刷新。
+  void reloadUsersTree()
 })
 
 /** 商城商品下拉：只列已上架商品，按管理端排序分页拉取（接口单页上限 100）。 */
@@ -362,12 +364,6 @@ function onTreeNodeClick(node: UserTreeNode): void {
   detailEntries.value = []
   detailVisible.value = true
   void loadDetailEntries(node.user.userId)
-}
-
-function onTabChange(name: string | number): void {
-  if (name === 'users' && !treeLoaded.value) {
-    void reloadUsersTree()
-  }
 }
 
 /** 快捷步长：点一次在编辑框时间上叠加，编辑框为空则以仿真起点为基准。 */
@@ -687,8 +683,9 @@ const walletDiffRows = computed(() => {
       </div>
     </el-card>
 
-    <el-card v-loading="loading" shadow="never" class="block">
-      <template #header>仿真时钟</template>
+    <div class="clock-tree-row">
+      <el-card v-loading="loading" shadow="never" class="block clock-card">
+        <template #header>仿真时钟</template>
       <el-form label-width="110px" class="clock-form">
         <el-form-item label="仿真起点">
           <div>
@@ -741,11 +738,107 @@ const walletDiffRows = computed(() => {
         重置会清空订单、支付、钱包、市场树、报单、分红、角色与全部会员（根账户与商品保留），
         时间轴一并清空、仿真起点回到当前时间。操作不可恢复，请只在演练库使用。
       </p>
-    </el-card>
+      </el-card>
+
+      <el-card v-loading="treeLoading" shadow="never" class="block tree-card">
+        <template #header>
+          用户树
+          <span class="header-note">造数动作后自动刷新；点击节点看账户变动明细</span>
+        </template>
+        <div class="tree-toolbar">
+          <el-radio-group v-model="treeKind" size="small">
+            <el-radio-button value="invite">邀请树</el-radio-button>
+            <el-radio-button value="market">市场树</el-radio-button>
+          </el-radio-group>
+          <el-button size="small" :disabled="treeLoading" @click="reloadUsersTree">刷新</el-button>
+          <span class="tip tree-toolbar__note">
+            节点显示编号、昵称、身份与三个钱包余额；鼠标停留看公排报单。
+          </span>
+        </div>
+        <el-alert
+          v-if="treeError"
+          type="error"
+          :title="treeError"
+          show-icon
+          :closable="false"
+          class="tree-error"
+        />
+        <div v-loading="treeLoading" class="tree-wrap">
+          <el-tree
+            v-if="treeData.length > 0"
+            :data="treeData"
+            node-key="key"
+            default-expand-all
+            :expand-on-click-node="false"
+            :props="{ children: 'children', label: 'label' }"
+            class="user-tree"
+          >
+            <template #default="{ data }">
+              <el-tooltip
+                v-if="data.user"
+                placement="right-start"
+                effect="light"
+                :show-after="180"
+              >
+                <template #content>
+                  <div class="tree-tip">
+                    <div class="tree-tip__title">
+                      #{{ data.user.userId }} {{ data.user.nickname }}
+                    </div>
+                    <div class="tree-tip__section">公排报单序号</div>
+                    <div v-if="data.filings.length === 0" class="tree-tip__empty">
+                      暂无已完成报单
+                    </div>
+                    <div v-for="item in data.filings" :key="item.filingNo" class="tree-tip__line">
+                      第 {{ item.sequence }} 单 · {{ item.bizDate ?? '-' }} ·
+                      {{ money(item.amountFen) }} ·
+                      {{ item.status === 'settled' ? '已返现' : '已完成' }}
+                    </div>
+                    <div class="tree-tip__section">未参与公排的订单</div>
+                    <div v-if="data.unfiled.length === 0" class="tree-tip__empty">无</div>
+                    <div v-for="item in data.unfiled" :key="item.orderNo" class="tree-tip__line">
+                      {{ item.orderNo }} · {{ item.units }} 件 · {{ money(item.amountFen) }} ·
+                      {{ formatDateTime(item.paidAt) }}
+                    </div>
+                    <div class="tree-tip__hint">点击节点查看账户变动明细</div>
+                  </div>
+                </template>
+                <div class="tree-user" @click="onTreeNodeClick(data)">
+                  <span class="tree-user__id">#{{ data.user.userId }}</span>
+                  <span class="tree-user__nick">{{ data.user.nickname }}</span>
+                  <el-tag
+                    v-for="identity in data.user.identities"
+                    :key="identity"
+                    size="small"
+                    effect="plain"
+                    :type="identityTagType(identity)"
+                  >
+                    {{ identityLabel(identity) }}
+                  </el-tag>
+                  <span class="tree-user__wallet">
+                    提现 {{ money(data.user.wallets.withdrawable) }}
+                  </span>
+                  <span class="tree-user__wallet">
+                    积分 {{ money(data.user.wallets.points) }}
+                  </span>
+                  <span class="tree-user__wallet">
+                    消费 {{ money(data.user.wallets.consumption) }}
+                  </span>
+                </div>
+              </el-tooltip>
+              <div v-else class="tree-group">{{ data.label }}</div>
+            </template>
+          </el-tree>
+          <p v-else-if="!treeLoading" class="tip">
+            还没有用户。先在「批量注册」里造人，或在「批量购买创业专区」里让会员入座。
+          </p>
+        </div>
+      </el-card>
+    </div>
 
     <el-card shadow="never" class="block">
       <template #header>造数动作</template>
-      <el-tabs @tab-change="onTabChange">
+      <el-tabs>
         <el-tab-pane label="批量注册">
           <el-form label-width="110px" class="action-form">
             <el-form-item label="人数">
@@ -969,98 +1062,7 @@ const walletDiffRows = computed(() => {
           </p>
         </el-tab-pane>
 
-        <el-tab-pane label="用户树" name="users">
-          <div class="tree-toolbar">
-            <el-radio-group v-model="treeKind" size="small">
-              <el-radio-button value="invite">邀请树</el-radio-button>
-              <el-radio-button value="market">市场树</el-radio-button>
-            </el-radio-group>
-            <el-button size="small" :disabled="treeLoading" @click="reloadUsersTree">
-              刷新
-            </el-button>
-            <span class="tip tree-toolbar__note">
-              节点显示编号、昵称、身份与三个钱包余额；鼠标停留看公排报单，点击看账户变动明细。
-            </span>
-          </div>
-          <el-alert
-            v-if="treeError"
-            type="error"
-            :title="treeError"
-            show-icon
-            :closable="false"
-            class="tree-error"
-          />
-          <div v-loading="treeLoading" class="tree-wrap">
-            <el-tree
-              v-if="treeData.length > 0"
-              :data="treeData"
-              node-key="key"
-              default-expand-all
-              :expand-on-click-node="false"
-              :props="{ children: 'children', label: 'label' }"
-              class="user-tree"
-            >
-              <template #default="{ data }">
-                <el-tooltip
-                  v-if="data.user"
-                  placement="right-start"
-                  effect="light"
-                  :show-after="180"
-                >
-                  <template #content>
-                    <div class="tree-tip">
-                      <div class="tree-tip__title">
-                        #{{ data.user.userId }} {{ data.user.nickname }}
-                      </div>
-                      <div class="tree-tip__section">公排报单序号</div>
-                      <div v-if="data.filings.length === 0" class="tree-tip__empty">
-                        暂无已完成报单
-                      </div>
-                      <div v-for="item in data.filings" :key="item.filingNo" class="tree-tip__line">
-                        第 {{ item.sequence }} 单 · {{ item.bizDate ?? '-' }} ·
-                        {{ money(item.amountFen) }} ·
-                        {{ item.status === 'settled' ? '已返现' : '已完成' }}
-                      </div>
-                      <div class="tree-tip__section">未参与公排的订单</div>
-                      <div v-if="data.unfiled.length === 0" class="tree-tip__empty">无</div>
-                      <div v-for="item in data.unfiled" :key="item.orderNo" class="tree-tip__line">
-                        {{ item.orderNo }} · {{ item.units }} 件 · {{ money(item.amountFen) }} ·
-                        {{ formatDateTime(item.paidAt) }}
-                      </div>
-                      <div class="tree-tip__hint">点击节点查看账户变动明细</div>
-                    </div>
-                  </template>
-                  <div class="tree-user" @click="onTreeNodeClick(data)">
-                    <span class="tree-user__id">#{{ data.user.userId }}</span>
-                    <span class="tree-user__nick">{{ data.user.nickname }}</span>
-                    <el-tag
-                      v-for="identity in data.user.identities"
-                      :key="identity"
-                      size="small"
-                      effect="plain"
-                      :type="identityTagType(identity)"
-                    >
-                      {{ identityLabel(identity) }}
-                    </el-tag>
-                    <span class="tree-user__wallet">
-                      提现 {{ money(data.user.wallets.withdrawable) }}
-                    </span>
-                    <span class="tree-user__wallet">
-                      积分 {{ money(data.user.wallets.points) }}
-                    </span>
-                    <span class="tree-user__wallet">
-                      消费 {{ money(data.user.wallets.consumption) }}
-                    </span>
-                  </div>
-                </el-tooltip>
-                <div v-else class="tree-group">{{ data.label }}</div>
-              </template>
-            </el-tree>
-            <p v-else-if="!treeLoading" class="tip">
-              还没有用户。先在「批量注册」里造人，或在「批量购买创业专区」里让会员入座。
-            </p>
-          </div>
-        </el-tab-pane>
+
       </el-tabs>
     </el-card>
 
@@ -1255,6 +1257,27 @@ const walletDiffRows = computed(() => {
 .page-alert,
 .block {
   width: 100%;
+}
+
+/* 仿真时钟与用户树并排：左侧时钟较窄，右侧树撑满剩余宽度；窄屏时自动上下排列。 */
+.clock-tree-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+  width: 100%;
+}
+
+.clock-tree-row .clock-card {
+  width: auto;
+  flex: 0 1 460px;
+  min-width: 420px;
+}
+
+.clock-tree-row .tree-card {
+  width: auto;
+  flex: 1 1 320px;
+  min-width: 0;
 }
 
 .header-note {
