@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
+import UserTreeChart from './UserTreeChart.vue'
 import { apiErrorMessage } from '@/api/http'
 import { fetchProducts, type Product } from '@/api/products'
 import {
@@ -91,6 +92,48 @@ const treeUnfiled = ref<Record<string, SimulationUnfiledOrder[]>>({})
 const treeLoading = ref(false)
 const treeError = ref('')
 const treeLoaded = ref(false)
+/** 连线树的折叠模式：只看根层 / 全部展开。改模式时换 key 强制重挂载。 */
+const treeCollapseMode = ref<'expanded' | 'collapsed'>('expanded')
+const treeRenderKey = ref(0)
+
+function setTreeCollapse(mode: 'expanded' | 'collapsed'): void {
+  treeCollapseMode.value = mode
+  treeRenderKey.value += 1
+  if (mode === 'expanded' && treeZoom.value !== 1) {
+    void nextTick(fitTreeWidth)
+  }
+}
+
+/** 连线树的缩放：层级深时按容器宽度等比缩小，避免只能横向滚动看半截。 */
+const treeZoom = ref(1)
+const treeWrapRef = ref<HTMLElement | null>(null)
+
+async function fitTreeWidth(): Promise<void> {
+  const wrap = treeWrapRef.value
+  if (!wrap) return
+  treeZoom.value = 1
+  await nextTick()
+  const forest = wrap.querySelector<HTMLElement>('.tc-forest')
+  if (!forest) return
+  const natural = forest.scrollWidth
+  if (natural <= 0) return
+  const available = wrap.clientWidth - 20
+  treeZoom.value = Math.min(1, Math.max(0.35, Number((available / natural).toFixed(2))))
+}
+
+function resetTreeZoom(): void {
+  treeZoom.value = 1
+}
+
+/** 切树时缩回复原，避免把市场树的缩放带到邀请树上。 */
+watch(treeKind, () => {
+  treeZoom.value = 1
+})
+
+/** 切树时缩回复原，避免把市场树的缩放带到邀请树上。 */
+watch(treeKind, () => {
+  treeZoom.value = 1
+})
 
 const detailVisible = ref(false)
 const detailUser = ref<SimulationTreeUser | null>(null)
@@ -807,8 +850,34 @@ const walletDiffRows = computed(() => {
             <el-radio-button value="market">市场树</el-radio-button>
           </el-radio-group>
           <el-button size="small" :disabled="treeLoading" @click="reloadUsersTree">刷新</el-button>
+          <el-button
+            size="small"
+            :disabled="treeData.length === 0"
+            @click="setTreeCollapse('expanded')"
+          >
+            全部展开
+          </el-button>
+          <el-button
+            size="small"
+            :disabled="treeData.length === 0"
+            @click="setTreeCollapse('collapsed')"
+          >
+            只看根层
+          </el-button>
+          <el-button size="small" :disabled="treeData.length === 0" @click="fitTreeWidth">
+            适应宽度
+          </el-button>
+          <el-button
+            v-if="treeZoom !== 1"
+            size="small"
+            link
+            type="primary"
+            @click="resetTreeZoom"
+          >
+            {{ Math.round(treeZoom * 100) }}% · 还原
+          </el-button>
           <span class="tip tree-toolbar__note">
-            节点显示编号、昵称、身份与三个钱包余额；鼠标停留看公排报单。
+            节点显示编号、昵称、身份与三个钱包余额；鼠标停留看公排报单，点圆点可收起下级。
           </span>
         </div>
         <el-alert
@@ -819,72 +888,20 @@ const walletDiffRows = computed(() => {
           :closable="false"
           class="tree-error"
         />
-        <div v-loading="treeLoading" class="tree-wrap">
-          <el-tree
+        <div ref="treeWrapRef" v-loading="treeLoading" class="tree-wrap">
+          <div
             v-if="treeData.length > 0"
-            :data="treeData"
-            node-key="key"
-            default-expand-all
-            :expand-on-click-node="false"
-            :props="{ children: 'children', label: 'label' }"
-            class="user-tree"
+            class="tc-forest"
+            :style="{ transform: `scale(${treeZoom})`, transformOrigin: 'top left' }"
           >
-            <template #default="{ data }">
-              <el-tooltip
-                v-if="data.user"
-                placement="right-start"
-                effect="light"
-                :show-after="180"
-              >
-                <template #content>
-                  <div class="tree-tip">
-                    <div class="tree-tip__title">
-                      #{{ data.user.userId }} {{ data.user.nickname }}
-                    </div>
-                    <div class="tree-tip__section">公排报单序号</div>
-                    <div v-if="data.filings.length === 0" class="tree-tip__empty">
-                      暂无已完成报单
-                    </div>
-                    <div v-for="item in data.filings" :key="item.filingNo" class="tree-tip__line">
-                      第 {{ item.sequence }} 单 · {{ item.bizDate ?? '-' }} ·
-                      {{ money(item.amountFen) }} ·
-                      {{ item.status === 'settled' ? '已返现' : '已完成' }}
-                    </div>
-                    <div class="tree-tip__section">未参与公排的订单</div>
-                    <div v-if="data.unfiled.length === 0" class="tree-tip__empty">无</div>
-                    <div v-for="item in data.unfiled" :key="item.orderNo" class="tree-tip__line">
-                      {{ item.orderNo }} · {{ item.units }} 件 · {{ money(item.amountFen) }} ·
-                      {{ formatDateTime(item.paidAt) }}
-                    </div>
-                    <div class="tree-tip__hint">点击节点查看账户变动明细</div>
-                  </div>
-                </template>
-                <div class="tree-user" @click="onTreeNodeClick(data)">
-                  <span class="tree-user__id">#{{ data.user.userId }}</span>
-                  <span class="tree-user__nick">{{ data.user.nickname }}</span>
-                  <el-tag
-                    v-for="identity in data.user.identities"
-                    :key="identity"
-                    size="small"
-                    effect="plain"
-                    :type="identityTagType(identity)"
-                  >
-                    {{ identityLabel(identity) }}
-                  </el-tag>
-                  <span class="tree-user__wallet">
-                    提现 {{ money(data.user.wallets.withdrawable) }}
-                  </span>
-                  <span class="tree-user__wallet">
-                    积分 {{ money(data.user.wallets.points) }}
-                  </span>
-                  <span class="tree-user__wallet">
-                    消费 {{ money(data.user.wallets.consumption) }}
-                  </span>
-                </div>
-              </el-tooltip>
-              <div v-else class="tree-group">{{ data.label }}</div>
-            </template>
-          </el-tree>
+            <UserTreeChart
+              v-for="root in treeData"
+              :key="`${root.key}-${treeRenderKey}`"
+              :node="root"
+              :default-collapsed="treeCollapseMode === 'collapsed'"
+              @select="onTreeNodeClick"
+            />
+          </div>
           <p v-else-if="!treeLoading" class="tip">
             还没有用户。先在「批量注册」里造人，或在「批量购买创业专区」里让会员入座。
           </p>
@@ -1489,80 +1506,13 @@ const walletDiffRows = computed(() => {
   padding: 4px 0;
 }
 
-.user-tree {
-  background: transparent;
-}
-
-.user-tree :deep(.el-tree-node__content) {
-  height: auto;
-  padding: 2px 0;
-}
-
-.tree-user {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
-  border: 1px solid var(--aurel-line);
-  border-radius: 8px;
-  background: var(--aurel-surface);
-  cursor: pointer;
-  transition: border-color 0.15s ease;
-}
-
-.tree-user:hover {
-  border-color: var(--el-color-primary);
-}
-
-.tree-user__id {
-  color: var(--aurel-muted);
-  font-size: 12px;
-}
-
-.tree-user__nick {
-  font-weight: 600;
-}
-
-.tree-user__wallet {
-  color: var(--aurel-muted);
-  font-size: 12px;
-}
-
-.tree-group {
-  color: var(--aurel-muted);
-  font-size: 12px;
-}
-
-.tree-tip {
-  max-width: 360px;
-  line-height: 1.6;
-}
-
-.tree-tip__title {
-  margin-bottom: 4px;
-  font-weight: 600;
-}
-
-.tree-tip__section {
-  margin-top: 6px;
-  color: var(--aurel-muted);
-  font-size: 12px;
-}
-
-.tree-tip__line {
-  font-size: 12px;
-}
-
-.tree-tip__empty {
-  color: var(--aurel-muted);
-  font-size: 12px;
-}
-
-.tree-tip__hint {
-  margin-top: 8px;
-  color: var(--el-color-primary);
-  font-size: 12px;
+/* 连线树：多个根（根账户 + 未挂靠组）纵向排列，整体靠左，超出滚动 */
+.tc-forest {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 24px;
+  padding: 12px 12px 12px 4px;
 }
 
 .user-detail {
