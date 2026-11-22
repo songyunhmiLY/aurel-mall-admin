@@ -46,8 +46,13 @@ export interface SimulationEvent {
     to?: string | null
     byMinutes?: number
     jobsAttempted?: boolean
+    /** 本次造了多少人 / 多少单 / 任命几个角色。 */
     created?: number
+    /** 推进时实际跑过 job 的时点数。 */
     steps?: number
+    /** 红包报名：当天已报过的人数 / 没报上的人数。 */
+    already?: number
+    skipped?: number
   }
   diff: SimulationDiff | null
 }
@@ -183,6 +188,11 @@ export async function fetchSimulationTimeline(): Promise<SimulationEvent[]> {
         to: typeof detail.to === 'string' ? detail.to : null,
         byMinutes: typeof detail.byMinutes === 'number' ? detail.byMinutes : undefined,
         jobsAttempted: detail.jobsAttempted === true,
+        // 造数数量与到期任务次数：时间轴「详情」列要靠这几个数字，漏解析就只剩「新增 个用户」。
+        created: typeof detail.created === 'number' ? detail.created : undefined,
+        steps: typeof detail.steps === 'number' ? detail.steps : undefined,
+        already: typeof detail.already === 'number' ? detail.already : undefined,
+        skipped: typeof detail.skipped === 'number' ? detail.skipped : undefined,
       },
       diff: readDiff(row.diff),
     }

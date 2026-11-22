@@ -581,8 +581,10 @@ function fmt(value: number): string {
   return value > 0 ? `+${value}` : `${value}`
 }
 
-function fen(value: number): string {
-  return `${fmt(value)} 分（${(value / 100).toFixed(2)} 元）`
+/** 金额只显示元：分与元不并列，100 分即 1.00 元。 */
+function signedYuan(value: number): string {
+  if (value === 0) return '0 元'
+  return `${value > 0 ? '+' : ''}${(value / 100).toFixed(2)} 元`
 }
 
 function yuan(value: number): string {
@@ -601,13 +603,13 @@ const walletDiffRows = computed(() => {
   const diff = [...events.value].reverse().find((item) => item.diff)?.diff
   if (!diff) return []
   return [
-    { label: '积分余额', value: fen(diff.wallet.points) },
-    { label: '可提现余额', value: fen(diff.wallet.withdrawable) },
-    { label: '消费金余额', value: fen(diff.wallet.consumption) },
-    { label: '可提现冻结', value: fen(diff.wallet.withdrawableFrozen) },
-    { label: '消费金冻结', value: fen(diff.wallet.consumptionFrozen) },
-    { label: '现金流入', value: fen(diff.cash.inflow) },
-    { label: '现金流出', value: fen(diff.cash.outflow) },
+    { label: '积分余额', value: signedYuan(diff.wallet.points) },
+    { label: '可提现余额', value: signedYuan(diff.wallet.withdrawable) },
+    { label: '消费金余额', value: signedYuan(diff.wallet.consumption) },
+    { label: '可提现冻结', value: signedYuan(diff.wallet.withdrawableFrozen) },
+    { label: '消费金冻结', value: signedYuan(diff.wallet.consumptionFrozen) },
+    { label: '现金流入', value: signedYuan(diff.cash.inflow) },
+    { label: '现金流出', value: signedYuan(diff.cash.outflow) },
     { label: '订单数', value: fmt(diff.counts.orders) },
     { label: '待审提现', value: fmt(diff.counts.pendingWithdrawals) },
     { label: '待处理补偿', value: fmt(diff.counts.pendingCompensations) },
@@ -1116,10 +1118,11 @@ const walletDiffRows = computed(() => {
         <el-table-column label="差分摘要" min-width="240">
           <template #default="{ row }">
             <span v-if="row.diff">
-              积分 {{ fmt(row.diff.wallet.points) }} / 可提现
-              {{ fmt(row.diff.wallet.withdrawable) }} / 消费金
-              {{ fmt(row.diff.wallet.consumption) }} / 现金入 {{ fmt(row.diff.cash.inflow) }} /
-              现金出 {{ fmt(row.diff.cash.outflow) }} / 订单 {{ fmt(row.diff.counts.orders) }}
+              积分 {{ signedYuan(row.diff.wallet.points) }} / 可提现
+              {{ signedYuan(row.diff.wallet.withdrawable) }} / 消费金
+              {{ signedYuan(row.diff.wallet.consumption) }} / 现金入
+              {{ signedYuan(row.diff.cash.inflow) }} / 现金出
+              {{ signedYuan(row.diff.cash.outflow) }} / 订单 {{ fmt(row.diff.counts.orders) }}
             </span>
             <span v-else>-</span>
           </template>
