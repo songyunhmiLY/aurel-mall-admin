@@ -996,9 +996,9 @@ const walletDiffRows = computed(() => {
               <el-input v-model="buyProductId" placeholder="留空取创业专区第一件上架商品" />
             </el-form-item>
             <el-form-item label="数量区间">
-              <el-input-number v-model="buyMin" :min="1" :max="99" />
+              <el-input-number v-model="buyMin" :min="1" />
               <span class="range-sep">至</span>
-              <el-input-number v-model="buyMax" :min="1" :max="99" />
+              <el-input-number v-model="buyMax" :min="1" />
             </el-form-item>
             <el-form-item>
               <el-button type="primary" :disabled="busy" @click="onPurchase">
@@ -1072,9 +1072,9 @@ const walletDiffRows = computed(() => {
               </div>
             </el-form-item>
             <el-form-item label="数量区间">
-              <el-input-number v-model="mallMin" :min="1" :max="99" />
+              <el-input-number v-model="mallMin" :min="1" />
               <span class="range-sep">至</span>
-              <el-input-number v-model="mallMax" :min="1" :max="99" />
+              <el-input-number v-model="mallMax" :min="1" />
             </el-form-item>
             <el-form-item>
               <el-button type="primary" :disabled="busy" @click="onPurchaseMall">
