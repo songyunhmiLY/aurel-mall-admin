@@ -53,8 +53,34 @@ export interface SimulationEvent {
     /** 红包报名：当天已报过的人数 / 没报上的人数。 */
     already?: number
     skipped?: number
+    /** 推进时填写的演练红包池：命中的业务日、金额（分）、是否真的结算用上。 */
+    redPacketBizDate?: string
+    redPacketPoolFen?: string
+    redPacketApplied?: boolean
   }
   diff: SimulationDiff | null
+}
+
+/** 当前仿真日的红包结算上下文：默认计提、后台金额、报名人数、结算时刻。 */
+export interface SimulationRedPacketPoolContext {
+  bizDate: string
+  /** 该日真正结算的时刻（次日检查钟点，ISO）。 */
+  settleAt: string
+  settled: boolean
+  /** 管理后台为该日设置的金额池（分），未设置为 null。 */
+  adminAmountFen: string | null
+  signupCount: number
+  /** 默认计提比例，万分比（300 = 3%）。 */
+  accrualBps: number
+  salesFen: string
+  defaultPoolFen: string
+}
+
+/** 推进时填写的演练红包池结果。 */
+export interface SimulationRedPacketPool {
+  bizDate: string
+  amountFen: string
+  applied: boolean
 }
 
 export interface SimulationOverview {
@@ -193,6 +219,12 @@ export async function fetchSimulationTimeline(): Promise<SimulationEvent[]> {
         steps: typeof detail.steps === 'number' ? detail.steps : undefined,
         already: typeof detail.already === 'number' ? detail.already : undefined,
         skipped: typeof detail.skipped === 'number' ? detail.skipped : undefined,
+        redPacketBizDate:
+          typeof detail.redPacketBizDate === 'string' ? detail.redPacketBizDate : undefined,
+        redPacketPoolFen:
+          typeof detail.redPacketPoolFen === 'string' ? detail.redPacketPoolFen : undefined,
+        redPacketApplied:
+          typeof detail.redPacketApplied === 'boolean' ? detail.redPacketApplied : undefined,
       },
       diff: readDiff(row.diff),
     }
@@ -375,15 +407,46 @@ export async function fetchSimulationUserLedger(
 }
 
 /** 逐业务日推进：跨日公排、跨月核算按各自业务日执行。 */
-export async function simulationAdvance(to: string): Promise<{
+export async function simulationAdvance(
+  to: string,
+  redPacketPoolFen?: string,
+): Promise<{
   status: SimulationStatus
   steps: number
+  redPacketPool: SimulationRedPacketPool | null
 }> {
-  const { data } = await http.post<unknown>('/admin/simulation/advance', { to })
+  const { data } = await http.post<unknown>('/admin/simulation/advance', {
+    to,
+    ...(redPacketPoolFen ? { redPacketPoolFen } : {}),
+  })
   const record = asRecord(data) ?? {}
+  const pool = asRecord(record.redPacketPool)
   return {
     status: toStatus(record.status),
     steps: typeof record.steps === 'number' ? record.steps : 0,
+    redPacketPool: pool
+      ? {
+          bizDate: readString(pool.bizDate),
+          amountFen: readString(pool.amountFen),
+          applied: pool.applied === true,
+        }
+      : null,
+  }
+}
+
+/** 当前仿真日的红包结算上下文。 */
+export async function fetchSimulationRedPacketPool(): Promise<SimulationRedPacketPoolContext> {
+  const { data } = await http.get<unknown>('/admin/simulation/red-packet-pool')
+  const record = asRecord(data) ?? {}
+  return {
+    bizDate: readString(record.bizDate),
+    settleAt: readString(record.settleAt),
+    settled: record.settled === true,
+    adminAmountFen: typeof record.adminAmountFen === 'string' ? record.adminAmountFen : null,
+    signupCount: typeof record.signupCount === 'number' ? record.signupCount : 0,
+    accrualBps: typeof record.accrualBps === 'number' ? record.accrualBps : 0,
+    salesFen: readString(record.salesFen),
+    defaultPoolFen: readString(record.defaultPoolFen),
   }
 }
 

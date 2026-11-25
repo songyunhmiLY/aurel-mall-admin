@@ -4,9 +4,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 import UserTreeChart from './UserTreeChart.vue'
 import { apiErrorMessage } from '@/api/http'
+import { formatDecimalFen, yuanInputToFenString } from '@/api/money'
 import { fetchProducts, type Product } from '@/api/products'
 import {
   fetchSimulationOverview,
+  fetchSimulationRedPacketPool,
   fetchSimulationStatus,
   fetchSimulationTimeline,
   fetchSimulationUserLedger,
@@ -26,6 +28,7 @@ import {
   type SimulationFilingInfo,
   type SimulationLedgerEntry,
   type SimulationOverview,
+  type SimulationRedPacketPoolContext,
   type SimulationStatus,
   type SimulationTreeEdge,
   type SimulationTreeUser,
@@ -41,6 +44,69 @@ const overview = ref<SimulationOverview | null>(null)
 const events = ref<SimulationEvent[]>([])
 
 const advanceTarget = ref<Date | null>(null)
+
+/* ---------- 演练红包池：本次推进给当前仿真日的临时金额，不写管理后台 ---------- */
+
+const redPacketPoolYuan = ref('')
+const redPacketPool = ref<SimulationRedPacketPoolContext | null>(null)
+
+/** 卡片上的规则提示：后台有没有为这一天设置、默认会怎么计提、几点结算。 */
+const poolHint = computed<{ tag: 'success' | 'warning' | 'info'; label: string; detail: string }>(
+  () => {
+    const ctx = redPacketPool.value
+    if (!ctx) {
+      return { tag: 'info', label: '读取中', detail: '正在读取当前仿真日的红包分配规则。' }
+    }
+    if (ctx.settled) {
+      return {
+        tag: 'info',
+        label: `${ctx.bizDate} 已结算`,
+        detail: '这一天已经结算完，再填写金额不会生效；推进到新的一天后，金额按新的仿真日生效。',
+      }
+    }
+    const when = `${shortDateTime(ctx.settleAt)} 结算`
+    const people = ctx.signupCount > 0 ? `已报名 ${ctx.signupCount} 人` : '还没有人报名'
+    if (ctx.adminAmountFen !== null) {
+      return {
+        tag: 'warning',
+        label: `后台已设置 ￥${formatDecimalFen(ctx.adminAmountFen)}`,
+        detail: `管理后台已为 ${ctx.bizDate} 指定红包分配规则，会按该金额派发。填写金额可覆盖后台设置，仅本次演练生效。${people}，${when}。`,
+      }
+    }
+    return {
+      tag: 'success',
+      label: '后台未设置 · 按默认规则',
+      detail: `当日红包池按默认规则计提：创业专区销售额 ￥${formatDecimalFen(ctx.salesFen)} × ${percentText(ctx.accrualBps)} ≈ ￥${formatDecimalFen(ctx.defaultPoolFen)}。填写金额可覆盖，仅本次演练生效。${people}，${when}。`,
+    }
+  },
+)
+
+function percentText(bps: number): string {
+  const pct = bps / 100
+  return `${Number.isInteger(pct) ? pct.toFixed(0) : pct.toFixed(2)}%`
+}
+
+/** 结算时刻只显示到分钟：11/26 00:01。 */
+function shortDateTime(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  return new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(date)
+}
+
+async function reloadRedPacketPool(): Promise<void> {
+  try {
+    redPacketPool.value = await fetchSimulationRedPacketPool()
+  } catch {
+    // 规则提示读取失败不阻塞演练，下一次操作会再试。
+  }
+}
 
 const registerCount = ref(20)
 const registerInviter = ref('')
@@ -216,6 +282,7 @@ onMounted(() => {
   void loadMallProducts()
   // 用户树独立成卡、始终可见，进页面就拉一次；造数动作在 run() 里自动刷新。
   void reloadUsersTree()
+  void reloadRedPacketPool()
 })
 
 /** 商城商品下拉：只列已上架商品，按管理端排序分页拉取（接口单页上限 100）。 */
@@ -300,6 +367,8 @@ async function reloadTimeline(): Promise<void> {
   } catch {
     // 时间轴读取失败不阻塞主流程，下一次操作会再试。
   }
+  // 销售额、报名人数与仿真日都会随操作变化，红包规则提示一起刷新。
+  await reloadRedPacketPool()
 }
 
 function applyClock(next: SimulationStatus): void {
@@ -436,6 +505,7 @@ function bumpAdvanceTarget(minutes: number): void {
  *
  * 起点自动确定：已有仿真记录时后端带覆盖值，直接往后推；从未仿真过则用当前
  * 业务时间（即真实时间）先落一个起点，再推进，避免把起点之前的空档算进来。
+ * 红包池填了就随本次推进带给当前仿真日，跨过次日结算钟点才真正生效。
  */
 function onAdvance(): void {
   if (!advanceTarget.value) {
@@ -448,15 +518,39 @@ function onAdvance(): void {
     actionError.value = '目标时刻必须晚于仿真起点'
     return
   }
+  const poolInput = redPacketPoolYuan.value.trim()
+  let poolFen: string | undefined
+  if (poolInput) {
+    const parsed = yuanInputToFenString(poolInput)
+    if (parsed === null) {
+      actionError.value = '红包池金额格式不正确：填元，最多两位小数'
+      return
+    }
+    poolFen = parsed
+  }
   void run(async () => {
     if (!status.value?.clock.override) {
       const start = status.value?.clock.now ?? new Date().toISOString()
       applyClock(await setSimulationClock(start))
     }
-    const result = await simulationAdvance(target.toISOString())
+    const result = await simulationAdvance(target.toISOString(), poolFen)
     applyClock(result.status)
     await reloadTimeline()
-    ElMessage.success(`已推进到 ${target.toLocaleString()}，期间执行了 ${result.steps} 次到期任务`)
+    const done = `已推进到 ${target.toLocaleString()}，期间执行了 ${result.steps} 次到期任务`
+    if (result.redPacketPool) {
+      const pool = result.redPacketPool
+      const amount = `￥${formatDecimalFen(pool.amountFen)}`
+      if (pool.applied) {
+        redPacketPoolYuan.value = ''
+        ElMessage.success(`${done}；${pool.bizDate} 红包池按演练填写 ${amount} 分配`)
+      } else {
+        ElMessage.warning(
+          `${done}；本次没有跨过 ${pool.bizDate} 的结算时点，填写的红包池 ${amount} 未生效，可继续推进到次日`,
+        )
+      }
+      return
+    }
+    ElMessage.success(done)
   })
 }
 
@@ -656,6 +750,7 @@ function onResetData(): void {
         buyResults.value = []
         redPacketResults.value = []
         advanceTarget.value = null
+        redPacketPoolYuan.value = ''
         actionError.value = ''
         detailVisible.value = false
         await reloadTimeline()
@@ -826,6 +921,23 @@ const walletDiffRows = computed(() => {
             </div>
           </div>
           <p class="tip">快捷按钮在当前编辑框时间上累加；编辑框为空时从仿真起点起算。</p>
+        </el-form-item>
+        <el-form-item label="红包池金额">
+          <div class="pool-field">
+            <el-input
+              v-model="redPacketPoolYuan"
+              class="pool-input"
+              placeholder="留空按现有规则"
+              clearable
+              :disabled="busy"
+            >
+              <template #append>元</template>
+            </el-input>
+            <div class="pool-hint">
+              <el-tag size="small" effect="plain" :type="poolHint.tag">{{ poolHint.label }}</el-tag>
+              <p class="tip pool-hint__text">{{ poolHint.detail }}</p>
+            </div>
+          </div>
         </el-form-item>
       </el-form>
       <el-alert v-if="actionError" type="error" :title="actionError" show-icon :closable="false" />
@@ -1170,6 +1282,21 @@ const walletDiffRows = computed(() => {
             </span>
             <span v-else-if="row.action === 'advance'">
               {{ row.detail.from }} → {{ row.detail.to }}（{{ row.detail.steps }} 次到期任务）
+              <template v-if="row.detail.redPacketPoolFen">
+                <br />
+                <span class="detail-sub">
+                  红包池 {{ row.detail.redPacketBizDate }}：￥{{
+                    formatDecimalFen(row.detail.redPacketPoolFen)
+                  }}
+                  <el-tag
+                    size="small"
+                    effect="plain"
+                    :type="row.detail.redPacketApplied ? 'success' : 'info'"
+                  >
+                    {{ row.detail.redPacketApplied ? '已生效' : '未生效' }}
+                  </el-tag>
+                </span>
+              </template>
             </span>
             <span v-else-if="row.action === 'register'">新增 {{ row.detail.created }} 个用户</span>
             <span v-else-if="row.action === 'purchase'">成功下单 {{ row.detail.created }} 笔</span>
@@ -1422,6 +1549,34 @@ const walletDiffRows = computed(() => {
 
 .advance-row + .tip {
   width: 100%;
+}
+
+/* 红包池：输入框在上，规则提示在下；提示文字较长，限制输入框宽度留出行宽。 */
+.pool-field {
+  width: 100%;
+}
+
+.pool-field .pool-input {
+  width: 200px;
+}
+
+.pool-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.pool-hint__text {
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* 时间轴里推进事件的第二行：演练红包池与是否生效。 */
+.detail-sub {
+  color: var(--aurel-muted);
+  font-size: 12px;
 }
 
 .action-form {
