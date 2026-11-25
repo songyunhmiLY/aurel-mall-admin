@@ -1,9 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { apiErrorMessage } from '@/api/http'
-import { fetchWelfareEntry, saveWelfareEntry, type WelfareEntry } from '@/api/welfare'
+import { formatDecimalFen, yuanInputToFenString } from '@/api/money'
+import {
+  deleteWelfarePoolOverride,
+  fetchWelfareEntry,
+  fetchWelfarePoolOverrides,
+  saveWelfareEntry,
+  saveWelfarePoolOverride,
+  type WelfareEntry,
+  type WelfarePoolOverride,
+} from '@/api/welfare'
+import { formatShanghaiTime } from '@/utils/datetime'
 import {
   welfareEntryCopyMax,
   welfareEntryImageMax,
@@ -23,11 +33,32 @@ const draft = reactive<WelfareEntryDraft>({
   imageUrl: '',
 })
 
+const poolLoading = ref(false)
+const poolSaving = ref(false)
+const poolError = ref('')
+const poolOverrides = ref<WelfarePoolOverride[]>([])
+const poolForm = reactive({
+  bizDate: '',
+  amountYuan: '',
+})
+const poolSubmittingDate = ref('')
+
 const problem = computed(() => welfareEntryProblem(draft))
 const previewUrl = computed(() => welfareEntryPreviewUrl(draft.imageUrl))
 
+const poolAmountProblem = computed(() => {
+  if (!poolForm.bizDate) return '请选择日期'
+  if (poolForm.amountYuan.trim() === '') return '请输入金额'
+  return ''
+})
+
+const poolSaveDisabled = computed(
+  () => !loaded.value || poolSaving.value || Boolean(poolAmountProblem.value),
+)
+
 onMounted(() => {
   void load()
+  void loadPoolOverrides()
 })
 
 function applyLoaded(entry: WelfareEntry): void {
@@ -67,6 +98,84 @@ async function save(): Promise<void> {
   } finally {
     saving.value = false
   }
+}
+
+async function loadPoolOverrides(): Promise<void> {
+  poolLoading.value = true
+  poolError.value = ''
+  try {
+    poolOverrides.value = await fetchWelfarePoolOverrides()
+  } catch (error) {
+    poolError.value = apiErrorMessage(error, '读取金额池设置失败')
+  } finally {
+    poolLoading.value = false
+  }
+}
+
+async function savePoolOverride(): Promise<void> {
+  if (poolSaveDisabled.value) return
+  const bizDate = poolForm.bizDate
+  const fen = yuanInputToFenString(poolForm.amountYuan)
+  if (!bizDate || fen === null) {
+    poolError.value = '日期或金额不正确'
+    return
+  }
+  poolSaving.value = true
+  poolError.value = ''
+  try {
+    const saved = await saveWelfarePoolOverride({ bizDate, amountFen: fen })
+    const index = poolOverrides.value.findIndex((item) => item.bizDate === saved.bizDate)
+    if (index >= 0) {
+      poolOverrides.value.splice(index, 1, saved)
+    } else {
+      poolOverrides.value = [saved, ...poolOverrides.value].sort((a, b) =>
+        a.bizDate < b.bizDate ? 1 : -1,
+      )
+    }
+    poolForm.bizDate = ''
+    poolForm.amountYuan = ''
+    ElMessage.success(`已保存 ${saved.bizDate} 的红包金额池`)
+  } catch (error) {
+    poolError.value = apiErrorMessage(error, '保存金额池设置失败')
+  } finally {
+    poolSaving.value = false
+  }
+}
+
+async function removePoolOverride(row: WelfarePoolOverride): Promise<void> {
+  try {
+    await ElMessageBox.confirm(
+      `删除后 ${row.bizDate} 将恢复按销售额计提的红包金额池（该日未结算才有效）。确定删除？`,
+      '删除金额池设置',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  poolSubmittingDate.value = row.bizDate
+  poolError.value = ''
+  try {
+    await deleteWelfarePoolOverride(row.bizDate)
+    poolOverrides.value = poolOverrides.value.filter((item) => item.bizDate !== row.bizDate)
+    ElMessage.success('已删除')
+  } catch (error) {
+    poolError.value = apiErrorMessage(error, '删除金额池设置失败')
+  } finally {
+    poolSubmittingDate.value = ''
+  }
+}
+
+function editPoolOverride(row: WelfarePoolOverride): void {
+  poolForm.bizDate = row.bizDate
+  poolForm.amountYuan = formatDecimalFen(row.amountFen)
+}
+
+function poolAmountText(row: WelfarePoolOverride): string {
+  return `${formatDecimalFen(row.amountFen)} 元`
+}
+
+function poolTimeText(row: WelfarePoolOverride): string {
+  return row.updatedAt ? formatShanghaiTime(row.updatedAt) : '—'
 }
 </script>
 
@@ -133,6 +242,85 @@ async function save(): Promise<void> {
         <el-button :disabled="loading || saving" @click="load">重新读取</el-button>
       </div>
     </el-form>
+
+    <el-divider />
+
+    <header>
+      <h1>指定日期红包金额池</h1>
+    </header>
+    <p class="ops-hint">
+      为指定日期（Asia/Shanghai 自然日）设置固定的红包发放金额池。该日结算时使用设置金额覆盖按销售额计提的奖池，
+      报名人数均分、不足一分留在系统的规则不变；设置为 0 表示当日不发红包。
+      未设置日期的仍按原红包金额池结算。设置必须在当天红包结算前完成，已结算的日期不能再设置。
+    </p>
+    <el-alert v-if="poolError" type="error" :title="poolError" show-icon :closable="false" />
+
+    <el-form class="entry-form" label-position="top" @submit.prevent="savePoolOverride">
+      <div class="pool-inputs">
+        <el-form-item label="日期">
+          <el-date-picker
+            v-model="poolForm.bizDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            format="YYYY-MM-DD"
+            :clearable="false"
+            placeholder="选择日期"
+          />
+        </el-form-item>
+        <el-form-item label="金额池（元）">
+          <el-input
+            v-model="poolForm.amountYuan"
+            placeholder="例如 5000 或 5000.50"
+            class="pool-amount"
+          />
+        </el-form-item>
+        <el-button
+          type="primary"
+          native-type="submit"
+          :loading="poolSaving"
+          :disabled="poolSaveDisabled"
+        >
+          保存设置
+        </el-button>
+      </div>
+    </el-form>
+
+    <el-table
+      v-loading="poolLoading"
+      class="pool-table"
+      :data="poolOverrides"
+      empty-text="还没有设置任何日期"
+    >
+      <el-table-column prop="bizDate" label="日期" width="130" />
+      <el-table-column label="金额池" width="140">
+        <template #default="{ row }">{{ poolAmountText(row) }}</template>
+      </el-table-column>
+      <el-table-column label="状态" width="180">
+        <template #default="{ row }">
+          <el-tag v-if="row.settled" type="info">已结算（不再生效）</el-tag>
+          <el-tag v-else type="success">待结算</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="更新时间" min-width="170">
+        <template #default="{ row }">{{ poolTimeText(row) }}</template>
+      </el-table-column>
+      <el-table-column label="操作" width="140">
+        <template #default="{ row }">
+          <el-button link type="primary" :disabled="poolSaving" @click="editPoolOverride(row)">
+            修改
+          </el-button>
+          <el-button
+            link
+            type="danger"
+            :loading="poolSubmittingDate === row.bizDate"
+            :disabled="poolSaving"
+            @click="removePoolOverride(row)"
+          >
+            删除
+          </el-button>
+        </template>
+      </el-table-column>
+    </el-table>
   </section>
 </template>
 
@@ -142,6 +330,29 @@ async function save(): Promise<void> {
   flex-direction: column;
   gap: 8px;
   max-width: 640px;
+}
+
+.pool-inputs {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pool-inputs .el-form-item {
+  margin-bottom: 0;
+}
+
+.pool-inputs .el-button {
+  margin-top: 4px;
+}
+
+.pool-amount {
+  width: 200px;
+}
+
+.pool-table {
+  max-width: 860px;
+  margin-top: 8px;
 }
 
 .preview {

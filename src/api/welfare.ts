@@ -21,6 +21,19 @@ export interface WelfareEntryUpdate {
   imageUrl: string
 }
 
+/** 指定日期红包金额池设置。settled 表示该日已结算，设置不会再生效。 */
+export interface WelfarePoolOverride {
+  bizDate: string
+  amountFen: string
+  settled: boolean
+  updatedAt: string
+}
+
+export interface WelfarePoolOverrideUpdate {
+  bizDate: string
+  amountFen: string
+}
+
 export interface WelfareSignup {
   id: string
   userId: string
@@ -73,6 +86,7 @@ export interface WelfareParticipantQuery {
 }
 
 const entryPath = '/admin/welfare/entry'
+const poolOverridesPath = '/admin/welfare/pool-overrides'
 const signupsPath = '/admin/welfare/signups'
 const participantsPath = '/admin/welfare/participants'
 
@@ -127,6 +141,42 @@ function readOptionalImage(value: unknown): string | null {
   if (value == null) return null
   if (typeof value !== 'string') throw new ApiError('入口配置响应无效', 500)
   return value.trim() ? value : null
+}
+
+export async function fetchWelfarePoolOverrides(): Promise<WelfarePoolOverride[]> {
+  const { data } = await http.get<unknown>(poolOverridesPath)
+  if (!Array.isArray(data)) throw new ApiError('金额池设置列表响应无效', 500)
+  return data.map((item) => readPoolOverride(item))
+}
+
+export async function saveWelfarePoolOverride(
+  body: WelfarePoolOverrideUpdate,
+): Promise<WelfarePoolOverride> {
+  const { data } = await http.put<unknown>(poolOverridesPath, {
+    bizDate: body.bizDate,
+    amountFen: body.amountFen,
+  })
+  return readPoolOverride(data)
+}
+
+export async function deleteWelfarePoolOverride(bizDate: string): Promise<void> {
+  await http.delete(`${poolOverridesPath}/${bizDate}`)
+}
+
+function readPoolOverride(data: unknown): WelfarePoolOverride {
+  const record = asRecord(data)
+  const bizDate = readString(record?.bizDate)
+  const amountFen = readDecimalFen(record?.amountFen)
+  const settled = readBoolean(record?.settled)
+  if (!record || !bizDate || amountFen == null || settled == null) {
+    throw new ApiError('金额池设置响应无效', 500)
+  }
+  return {
+    bizDate,
+    amountFen,
+    settled,
+    updatedAt: readString(record.updatedAt),
+  }
 }
 
 function readSignup(data: unknown): WelfareSignup {
