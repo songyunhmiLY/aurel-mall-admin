@@ -1,4 +1,5 @@
-export const welfareEntryCopyMax = 200
+/** 入口文案是富文本 HTML，与后端 `WELFARE_ENTRY_COPY_MAX` 一致。 */
+export const welfareEntryCopyMax = 20_000
 export const welfareEntryImageMax = 512
 
 export interface WelfareEntryDraft {

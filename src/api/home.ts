@@ -8,7 +8,8 @@ export const pagePathMax = 512
 export const tickerContentMax = 255
 export const articleTitleMax = 200
 export const articleSummaryMax = 500
-export const articleBodyMax = 20_000
+/** 正文是富文本 HTML，与后端 `ARTICLE_BODY_MAX` 一致。 */
+export const articleBodyMax = 60_000
 export const sortMin = -1_000_000
 export const sortMax = 1_000_000
 
@@ -197,6 +198,25 @@ export async function updateArticle(id: string, body: ArticleUpdateBody): Promis
 export async function setArticleStatus(id: string, status: ArticleStatus): Promise<AdminArticle> {
   const { data } = await http.post<unknown>(`${articlesPath}/${id}/status`, { status })
   return readArticle(data)
+}
+
+/**
+ * 上传富文本插图，multipart 字段名是 file。
+ * 返回后端给的相对地址（/api/v1/uploads/{id}），这里拼成绝对 URL 供编辑器插入正文。
+ */
+export async function uploadArticleImage(file: File): Promise<string> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await http.post<unknown>('/admin/home/images', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 30_000,
+  })
+  const record = asRecord(data)
+  if (!record || typeof record.url !== 'string' || !record.url) {
+    throw new ApiError('图片上传响应无效', 500)
+  }
+  const base = import.meta.env?.VITE_API_BASE_URL?.trim() || window.location.origin
+  return new URL(record.url, base).toString()
 }
 
 function listParams(query: HomeListQuery): Record<string, string> {

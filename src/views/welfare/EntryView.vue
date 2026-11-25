@@ -4,6 +4,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { apiErrorMessage } from '@/api/http'
 import { formatDecimalFen, yuanInputToFenString } from '@/api/money'
+import RichTextWithSource from '@/components/RichTextWithSource.vue'
+import PhonePreview from '@/components/PhonePreview.vue'
 import {
   deleteWelfarePoolOverride,
   fetchWelfareEntry,
@@ -45,6 +47,7 @@ const poolSubmittingDate = ref('')
 
 const problem = computed(() => welfareEntryProblem(draft))
 const previewUrl = computed(() => welfareEntryPreviewUrl(draft.imageUrl))
+const previewVisible = ref(false)
 
 const poolAmountProblem = computed(() => {
   if (!poolForm.bizDate) return '请选择日期'
@@ -185,7 +188,8 @@ function poolTimeText(row: WelfarePoolOverride): string {
       <h1>入口配置</h1>
     </header>
     <p class="ops-hint">
-      配置小程序首页福利专场入口的文案和图片。文案最多 {{ welfareEntryCopyMax }} 字，图片地址最多
+      配置小程序首页福利专场入口的文案和图片。文案支持图文混排（富文本 HTML，最多
+      {{ welfareEntryCopyMax }} 字符），图片地址最多
       {{
         welfareEntryImageMax
       }}
@@ -200,14 +204,11 @@ function poolTimeText(row: WelfarePoolOverride): string {
       @submit.prevent="save"
     >
       <el-form-item label="入口文案">
-        <el-input
+        <RichTextWithSource
           v-model="draft.copy"
-          type="textarea"
-          :rows="4"
-          :maxlength="welfareEntryCopyMax"
-          show-word-limit
+          placeholder="首页入口文案，支持图文混排"
+          :height="300"
           :disabled="!loaded"
-          placeholder="首页入口文案，可以留空"
         />
       </el-form-item>
       <el-form-item label="入口图片">
@@ -227,6 +228,11 @@ function poolTimeText(row: WelfarePoolOverride): string {
         <p v-else-if="draft.imageUrl.trim()" class="ops-hint">
           这个地址不会在这里预览，保存时仍会提交。
         </p>
+      </el-form-item>
+      <el-form-item label="手机端预览">
+        <el-button :disabled="!loaded" @click="previewVisible = true">
+          查看小程序 / H5 效果
+        </el-button>
       </el-form-item>
       <p v-if="loaded && problem" class="field-error">{{ problem }}</p>
       <el-alert v-if="actionError" type="error" :title="actionError" show-icon :closable="false" />
@@ -321,6 +327,20 @@ function poolTimeText(row: WelfarePoolOverride): string {
         </template>
       </el-table-column>
     </el-table>
+
+    <!-- 小程序 / H5 福利专场页预览 -->
+    <el-drawer v-model="previewVisible" title="小程序 / H5 效果预览" size="460px">
+      <PhonePreview title="福利专场">
+        <div class="welfare-preview">
+          <img v-if="previewUrl" class="welfare-preview__cover" :src="previewUrl" alt="入口图片" />
+          <div class="welfare-preview__hero">
+            <span class="welfare-preview__kicker">WELFARE</span>
+            <span class="welfare-preview__title">福利专场</span>
+            <div class="rich-body" v-html="draft.copy || ''" />
+          </div>
+        </div>
+      </PhonePreview>
+    </el-drawer>
   </section>
 </template>
 
@@ -330,6 +350,39 @@ function poolTimeText(row: WelfarePoolOverride): string {
   flex-direction: column;
   gap: 8px;
   max-width: 640px;
+}
+
+/* 手机预览里的福利专场排版（对齐 uniapp welfare 页） */
+.welfare-preview__cover {
+  width: 100%;
+  height: 170px;
+  object-fit: cover;
+  display: block;
+}
+
+.welfare-preview__hero {
+  padding: 20px 16px;
+  background: linear-gradient(180deg, #221a10 0%, #3a2c16 100%);
+}
+
+.welfare-preview__kicker {
+  display: block;
+  color: #d8b26e;
+  font-size: 11px;
+  letter-spacing: 3px;
+}
+
+.welfare-preview__title {
+  display: block;
+  margin-top: 4px;
+  color: #f4e6c8;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.welfare-preview .rich-body {
+  margin-top: 10px;
+  color: #e8dcc2;
 }
 
 .pool-inputs {

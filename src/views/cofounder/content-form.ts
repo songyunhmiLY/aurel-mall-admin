@@ -2,7 +2,8 @@ import type { CofounderContent } from '@/api/cofounder'
 
 export const cofounderEntryCopyMax = 500
 export const cofounderIntroTitleMax = 200
-export const cofounderIntroBodyMax = 20_000
+/** 介绍正文是富文本 HTML，与后端 `COFOUNDER_INTRO_BODY_MAX` 一致。 */
+export const cofounderIntroBodyMax = 60_000
 export const cofounderImageMax = 512
 export const cofounderImageCountMax = 20
 

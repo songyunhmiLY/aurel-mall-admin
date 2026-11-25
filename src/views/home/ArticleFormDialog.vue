@@ -2,7 +2,6 @@
 import { computed, reactive, ref, watch } from 'vue'
 
 import {
-  articleBodyMax,
   articleSummaryMax,
   articleTitleMax,
   createArticle,
@@ -13,6 +12,8 @@ import {
 } from '@/api/home'
 import { apiErrorMessage } from '@/api/http'
 import { formatShanghaiTime } from '@/utils/datetime'
+import RichTextWithSource from '@/components/RichTextWithSource.vue'
+import PhonePreview from '@/components/PhonePreview.vue'
 import {
   articleCreateBody,
   articleProblem,
@@ -21,7 +22,7 @@ import {
   httpImageUrl,
   type ArticleDraft,
 } from './content-form'
-import { articleKindChoices, articleStatusLabel } from './labels'
+import { articleKindChoices, articleKindLabel, articleStatusLabel } from './labels'
 
 const props = defineProps<{
   modelValue: boolean
@@ -57,6 +58,11 @@ const showProblem = computed(() => {
 const previewUrl = computed(() => httpImageUrl(draft.coverUrl))
 const publishedText = computed(() =>
   publishedAt.value ? formatShanghaiTime(publishedAt.value) : '尚未发布',
+)
+const previewVisible = ref(false)
+/** 预览按发布后的样子展示；新建未发布时发布时间显示「刚刚」。 */
+const previewTime = computed(() =>
+  editing.value ? publishedText.value : draft.publishNow ? formatShanghaiTime(new Date().toISOString()) : '尚未发布',
 )
 
 watch(
@@ -139,7 +145,7 @@ async function save(): Promise<void> {
   <el-dialog
     :model-value="modelValue"
     :title="title"
-    width="720px"
+    width="860px"
     :close-on-click-modal="false"
     @update:model-value="emit('update:modelValue', $event)"
   >
@@ -172,13 +178,11 @@ async function save(): Promise<void> {
           />
         </el-form-item>
         <el-form-item label="正文">
-          <el-input
+          <RichTextWithSource
             v-model="draft.body"
-            type="textarea"
-            :rows="8"
-            :maxlength="articleBodyMax"
-            show-word-limit
-            placeholder="正文"
+            placeholder="正文内容，支持图文混排"
+            :height="340"
+            :disabled="loading"
           />
         </el-form-item>
         <el-form-item label="封面">
@@ -197,6 +201,9 @@ async function save(): Promise<void> {
               <span class="preview__fallback">图片无法预览</span>
             </template>
           </el-image>
+        </el-form-item>
+        <el-form-item label="手机端预览">
+          <el-button @click="previewVisible = true">查看小程序 / H5 效果</el-button>
         </el-form-item>
         <el-form-item v-if="editing" label="状态与发布时间">
           <p class="field-hint">
@@ -236,6 +243,25 @@ async function save(): Promise<void> {
       </el-button>
     </template>
   </el-dialog>
+
+  <!-- 小程序 / H5 资讯详情页预览 -->
+  <el-drawer v-model="previewVisible" title="小程序 / H5 效果预览" size="460px">
+    <PhonePreview title="资讯详情">
+      <div class="art-preview">
+        <el-image v-if="previewUrl" class="art-preview__cover" :src="previewUrl" fit="cover">
+          <template #error>
+            <span class="art-preview__cover-fallback">封面无法加载</span>
+          </template>
+        </el-image>
+        <div class="art-preview__pad">
+          <span class="art-preview__tag">{{ articleKindLabel(draft.kind || 'article') }}</span>
+          <div class="art-preview__title">{{ draft.title || '（未填写标题）' }}</div>
+          <div class="art-preview__date">{{ previewTime }}</div>
+          <div class="rich-body" v-html="draft.body || '<p>（正文为空）</p>'" />
+        </div>
+      </div>
+    </PhonePreview>
+  </el-drawer>
 </template>
 
 <style scoped>
@@ -265,5 +291,53 @@ async function save(): Promise<void> {
   color: var(--aurel-muted);
   font-size: 12px;
   background: var(--aurel-paper);
+}
+
+/* 手机预览里的资讯详情排版（对齐 uniapp 详情页） */
+.art-preview__cover {
+  width: 100%;
+  height: 190px;
+  display: block;
+}
+
+.art-preview__cover-fallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--aurel-muted);
+  font-size: 12px;
+  background: #eee;
+}
+
+.art-preview__pad {
+  padding: 12px 16px 24px;
+}
+
+.art-preview__tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #f3ead7;
+  color: #8a6a1f;
+  font-size: 11px;
+}
+
+.art-preview__title {
+  margin-top: 8px;
+  color: #222;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.art-preview__date {
+  margin-top: 6px;
+  color: #999;
+  font-size: 12px;
+}
+
+.art-preview .rich-body {
+  margin-top: 12px;
 }
 </style>

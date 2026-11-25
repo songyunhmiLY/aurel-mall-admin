@@ -4,6 +4,8 @@ import { ElMessage } from 'element-plus'
 
 import { fetchCofounderContent, saveCofounderContent, type CofounderContent } from '@/api/cofounder'
 import { apiErrorMessage } from '@/api/http'
+import RichTextWithSource from '@/components/RichTextWithSource.vue'
+import PhonePreview from '@/components/PhonePreview.vue'
 import {
   cofounderEntryCopyMax,
   cofounderImageCountMax,
@@ -23,6 +25,7 @@ const loadError = ref('')
 const actionError = ref('')
 const loaded = ref(false)
 const draft = reactive(emptyContentDraft())
+const previewVisible = ref(false)
 
 const problem = computed(() => (loaded.value ? contentProblem(draft) : ''))
 const entryPreviews = computed(() => imagePreviewUrls(draft.entryImageUrlsText))
@@ -78,8 +81,8 @@ async function save(): Promise<void> {
     </header>
     <p class="ops-hint">
       配置小程序首页联合创始人入口，以及介绍页的标题、正文和图片。入口文案最多
-      {{ cofounderEntryCopyMax }} 字，介绍标题最多 {{ cofounderIntroTitleMax }} 字，介绍正文最多
-      {{ cofounderIntroBodyMax }} 字。图片每组最多 {{ cofounderImageCountMax }} 个，每个地址最多
+      {{ cofounderEntryCopyMax }} 字，介绍标题最多 {{ cofounderIntroTitleMax }} 字，介绍正文支持图文混排（富文本
+      HTML，最多 {{ cofounderIntroBodyMax }} 字符）。图片每组最多 {{ cofounderImageCountMax }} 个，每个地址最多
       {{ cofounderImageMax }} 字。一行一个地址，留空会清空这一组图片。
     </p>
     <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" />
@@ -130,14 +133,11 @@ async function save(): Promise<void> {
         />
       </el-form-item>
       <el-form-item label="正文">
-        <el-input
+        <RichTextWithSource
           v-model="draft.introBody"
-          type="textarea"
-          :rows="8"
-          :maxlength="cofounderIntroBodyMax"
-          show-word-limit
+          placeholder="介绍页正文，支持图文混排"
+          :height="320"
           :disabled="!loaded"
-          placeholder="介绍页正文，可以留空"
         />
       </el-form-item>
       <el-form-item label="介绍图片">
@@ -157,6 +157,12 @@ async function save(): Promise<void> {
         </div>
       </el-form-item>
 
+      <el-form-item label="手机端预览">
+        <el-button :disabled="!loaded" @click="previewVisible = true">
+          查看小程序 / H5 效果
+        </el-button>
+      </el-form-item>
+
       <p v-if="loaded && problem" class="field-error">{{ problem }}</p>
       <el-alert v-if="actionError" type="error" :title="actionError" show-icon :closable="false" />
       <div class="actions">
@@ -172,6 +178,25 @@ async function save(): Promise<void> {
       </div>
     </el-form>
   </section>
+
+  <!-- 小程序 / H5 联创介绍页预览 -->
+  <el-drawer v-model="previewVisible" title="小程序 / H5 效果预览" size="460px">
+    <PhonePreview title="联合创始人">
+      <div class="cf-preview">
+        <img
+          v-for="url in introPreviews"
+          :key="url"
+          class="cf-preview__photo"
+          :src="url"
+          alt="介绍图片"
+        />
+        <div class="cf-preview__body">
+          <div class="cf-preview__title">{{ draft.introTitle || '联合创始人' }}</div>
+          <div class="rich-body" v-html="draft.introBody || '<p>（正文为空）</p>'" />
+        </div>
+      </div>
+    </PhonePreview>
+  </el-drawer>
 </template>
 
 <style scoped>
@@ -212,6 +237,27 @@ async function save(): Promise<void> {
 
 .field-error {
   color: var(--el-color-danger);
+}
+
+/* 手机预览里的联创介绍页排版（对齐 uniapp founder 页） */
+.cf-preview__photo {
+  width: 100%;
+  display: block;
+  height: auto;
+}
+
+.cf-preview__body {
+  padding: 16px;
+}
+
+.cf-preview__title {
+  color: #222;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.cf-preview .rich-body {
+  margin-top: 12px;
 }
 
 .actions {
