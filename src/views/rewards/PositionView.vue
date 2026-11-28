@@ -13,6 +13,7 @@ import {
   payDividendManually,
   updatePayoutDate,
   type DividendMember,
+  type DividendPayment,
   type DividendPlan,
   type DividendRecord,
   type UserQualification,
@@ -58,6 +59,128 @@ const manualError = ref('')
 const savingManual = ref(false)
 
 const periodOpen = computed(() => plan.value?.status === 'open')
+
+/** 矩阵单元格：该用户从此池可得金额 + 发放记录 */
+interface MatrixCell {
+  originalAmountFen: string
+  payment: DividendPayment | null
+}
+
+/** 矩阵行：一个用户一行，cells 以 positionCode 为键 */
+interface MatrixRow {
+  userId: string
+  nickname: string
+  removed: boolean
+  totalFen: string
+  cells: Record<string, MatrixCell>
+}
+
+const searchKeyword = ref('')
+
+const matrixRows = computed<MatrixRow[]>(() => {
+  const current = plan.value
+  if (!current) return []
+  const byUser = new Map<string, MatrixRow>()
+  for (const pool of current.pools) {
+    for (const member of pool.members) {
+      let row = byUser.get(member.userId)
+      if (!row) {
+        row = {
+          userId: member.userId,
+          nickname: member.nickname,
+          removed: member.removed,
+          totalFen: '0',
+          cells: {},
+        }
+        byUser.set(member.userId, row)
+      }
+      row.cells[pool.positionCode] = {
+        originalAmountFen: member.originalAmountFen,
+        payment: member.payment,
+      }
+      if (member.removed) row.removed = true
+    }
+  }
+  const rows = [...byUser.values()]
+  for (const row of rows) {
+    let total = 0n
+    for (const cell of Object.values(row.cells)) {
+      total += BigInt(cell.originalAmountFen)
+    }
+    row.totalFen = total.toString()
+  }
+  rows.sort((a, b) => Number(BigInt(a.userId) - BigInt(b.userId)))
+  return rows
+})
+
+const filteredRows = computed<MatrixRow[]>(() => {
+  const keyword = searchKeyword.value.trim()
+  if (!keyword) return matrixRows.value
+  return matrixRows.value.filter(
+    (row) => row.userId.includes(keyword) || row.nickname.includes(keyword),
+  )
+})
+
+/** 职级列显示文本：无资格显示 — */
+function cellText(row: MatrixRow, positionCode: string): string {
+  const cell = row.cells[positionCode]
+  return cell ? decimalFenText(cell.originalAmountFen) : '—'
+}
+
+/** 职级列样式：已移出置灰删除线，正常绿色，无资格灰 */
+function cellClass(row: MatrixRow, positionCode: string): string {
+  const cell = row.cells[positionCode]
+  if (!cell || row.removed) return 'amount-muted'
+  return 'amount-ok'
+}
+
+function rowPayments(row: MatrixRow): DividendPayment[] {
+  return Object.values(row.cells)
+    .map((cell) => cell.payment)
+    .filter((payment): payment is DividendPayment => payment != null)
+}
+
+function hasPayment(row: MatrixRow): boolean {
+  return rowPayments(row).length > 0
+}
+
+function poolPercentText(pool: { poolBps: number }): string {
+  return `${pool.poolBps / 100}%`
+}
+
+function autoLabelText(row: MatrixRow): string {
+  if (plan.value?.status === 'paid') return '已发放'
+  if (row.removed) return '已移出'
+  return '在名单中'
+}
+
+function autoTagType(row: MatrixRow): 'success' | 'warning' | 'info' {
+  if (plan.value?.status === 'paid') return 'info'
+  if (row.removed) return 'warning'
+  return 'success'
+}
+
+function resultText(row: MatrixRow): string {
+  const payments = rowPayments(row)
+  if (payments.length > 0) {
+    const byMode = new Map<string, bigint>()
+    for (const payment of payments) {
+      const sum = byMode.get(payment.mode) ?? 0n
+      byMode.set(payment.mode, sum + BigInt(payment.actualAmountFen))
+    }
+    return [...byMode]
+      .map(([mode, fen]) => `${modeLabel(mode)} ${decimalFenText(fen.toString())}`)
+      .join(' / ')
+  }
+  if (row.removed) return '待手工发放'
+  if (plan.value?.status === 'paid') return '—'
+  const day = plan.value?.payoutDate.slice(5) ?? ''
+  return `待发放（${day} 自动）`
+}
+
+function rowRecordsDialogTitle(row: MatrixRow): string {
+  return `发放流水 · ${row.nickname || row.userId}`
+}
 
 onMounted(() => {
   void loadThreshold()
@@ -162,39 +285,69 @@ async function savePayoutDate(): Promise<void> {
   }
 }
 
-async function exclude(member: DividendMember): Promise<void> {
+function excludeRow(row: MatrixRow): void {
   const current = plan.value
   if (!current || excludingId.value) return
-  try {
-    await ElMessageBox.confirm(
-      `确定停止 ${member.nickname || member.userId} 的自动发放？份额不会分给其他会员。`,
-      '停止自动发放',
-      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' },
-    )
-  } catch {
-    return
-  }
-  excludingId.value = member.userId
-  actionError.value = ''
-  try {
-    plan.value = await excludeDividendMember(current.performanceMonth, member.userId)
-    ElMessage.success('已停止自动发放')
-  } catch (error) {
-    actionError.value = apiErrorMessage(error, '停止自动发放失败')
-  } finally {
-    excludingId.value = ''
-  }
+  void (async () => {
+    try {
+      await ElMessageBox.confirm(
+        `确定停止 ${row.nickname || row.userId} 的自动发放？份额不会分给其他会员。`,
+        '停止自动发放',
+        { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' },
+      )
+    } catch {
+      return
+    }
+    excludingId.value = row.userId
+    actionError.value = ''
+    try {
+      plan.value = await excludeDividendMember(current.performanceMonth, row.userId)
+      ElMessage.success('已停止自动发放')
+    } catch (error) {
+      actionError.value = apiErrorMessage(error, '停止自动发放失败')
+    } finally {
+      excludingId.value = ''
+    }
+  })()
 }
 
-function openManual(positionCode: string, positionName: string, member: DividendMember): void {
-  manualUserId.value = member.userId
-  manualPositionCode.value = positionCode
-  manualPositionName.value = positionName || positionCode
-  manualOriginal.value = member.originalAmountFen
+/** 该用户被移出且尚未发放的池，作为手工发放的候选 */
+function manualPoolOptions(userId: string): Array<{ code: string; name: string; member: DividendMember }> {
+  const current = plan.value
+  if (!current) return []
+  const options: Array<{ code: string; name: string; member: DividendMember }> = []
+  for (const pool of current.pools) {
+    const member = pool.members.find(
+      (item) => item.userId === userId && item.removed && !item.payment,
+    )
+    if (member) {
+      options.push({ code: pool.positionCode, name: pool.positionName || pool.positionCode, member })
+    }
+  }
+  return options
+}
+
+const manualPoolChoices = ref<Array<{ code: string; name: string; member: DividendMember }>>([])
+
+function openManual(row: MatrixRow): void {
+  const [first] = manualPoolOptions(row.userId)
+  if (!first) return
+  manualUserId.value = row.userId
+  manualPoolChoices.value = manualPoolOptions(row.userId)
+  manualPositionCode.value = first.code
+  manualPositionName.value = first.name
+  manualOriginal.value = first.member.originalAmountFen
   manualYuan.value = ''
   manualRemark.value = ''
   manualError.value = ''
   manualOpen.value = true
+}
+
+function onManualPoolChange(code: string): void {
+  const choice = manualPoolChoices.value.find((item) => item.code === code)
+  if (!choice) return
+  manualPositionName.value = choice.name
+  manualOriginal.value = choice.member.originalAmountFen
 }
 
 async function submitManual(): Promise<void> {
@@ -251,6 +404,33 @@ async function loadQualification(): Promise<void> {
 function onRecordsPage(next: number): void {
   recordsPage.value = next
   void loadMonth()
+}
+
+/** 查看资格：填入用户 ID 并直接查询 */
+function viewQualification(userId: string): void {
+  qualificationId.value = userId
+  void loadQualification()
+}
+
+/** 单个用户的发放流水弹窗 */
+const rowRecordsOpen = ref(false)
+const rowRecordsLoading = ref(false)
+const rowRecordsTitle = ref('')
+const rowRecords = ref<DividendRecord[]>([])
+
+async function openRowRecords(row: MatrixRow): Promise<void> {
+  rowRecordsTitle.value = rowRecordsDialogTitle(row)
+  rowRecordsOpen.value = true
+  rowRecordsLoading.value = true
+  rowRecords.value = []
+  try {
+    const pageData = await fetchDividendRecords(month.value ?? '', 1, 100)
+    rowRecords.value = pageData.items.filter((item) => item.userId === row.userId)
+  } catch (error) {
+    ElMessage.error(apiErrorMessage(error, '读取发放记录失败'))
+  } finally {
+    rowRecordsLoading.value = false
+  }
 }
 
 function statusLabel(status: string): string {
@@ -349,57 +529,94 @@ function poolNote(exclusive: boolean): string {
         </div>
 
         <p v-if="plan.pools.length === 0" class="ops-hint">没有职位池。</p>
-        <section v-for="pool in plan.pools" :key="pool.positionCode" class="ops-card">
-          <h2>{{ pool.positionName || pool.positionCode }}</h2>
-          <p class="ops-meta">
-            池比例 {{ pool.poolBps }}（万分比）· {{ poolNote(pool.exclusive) }} · 分红池
-            {{ decimalFenText(pool.poolFen) }} · {{ pool.eligibleCount }} 人 · 每份
-            {{ decimalFenText(pool.shareFen) }}
-          </p>
-          <el-table :data="pool.members" empty-text="这个职位没有会员">
-            <el-table-column prop="userId" label="用户 ID" min-width="110" />
-            <el-table-column label="昵称" min-width="120">
-              <template #default="{ row }: { row: DividendMember }">
+        <section v-else class="ops-card">
+          <h2>分红名单</h2>
+          <div class="ops-toolbar">
+            <el-input
+              v-model="searchKeyword"
+              placeholder="搜索用户 ID / 昵称"
+              clearable
+              class="ops-filter"
+            />
+          </div>
+          <el-table :data="filteredRows" empty-text="没有达标会员">
+            <el-table-column label="用户 ID" width="90" fixed="left">
+              <template #default="{ row }: { row: MatrixRow }">
+                {{ row.userId }}
+              </template>
+            </el-table-column>
+            <el-table-column label="昵称" min-width="110" fixed="left">
+              <template #default="{ row }: { row: MatrixRow }">
                 {{ row.nickname || '—' }}
               </template>
             </el-table-column>
-            <el-table-column label="原金额" min-width="120">
-              <template #default="{ row }: { row: DividendMember }">
-                {{ decimalFenText(row.originalAmountFen) }}
+            <el-table-column label="总分红金额" min-width="110" align="right" fixed="left">
+              <template #default="{ row }: { row: MatrixRow }">
+                <span :class="row.removed ? 'amount-muted' : 'amount-strong'">
+                  {{ decimalFenText(row.totalFen) }}
+                </span>
               </template>
             </el-table-column>
-            <el-table-column label="自动发放" width="130">
-              <template #default="{ row }: { row: DividendMember }">
-                {{ row.removed ? '已停止' : '在名单中' }}
+            <el-table-column
+              v-for="pool in plan.pools"
+              :key="pool.positionCode"
+              align="right"
+              min-width="130"
+            >
+              <template #header>
+                <span :title="poolNote(pool.exclusive)" class="pool-name">
+                  {{ pool.positionName || pool.positionCode }} {{ poolPercentText(pool) }}
+                </span>
+                <span class="pool-sub">
+                  {{ decimalFenText(pool.poolFen) }} / {{ pool.eligibleCount }}人
+                </span>
+              </template>
+              <template #default="{ row }: { row: MatrixRow }">
+                <span :class="cellClass(row, pool.positionCode)">
+                  {{ cellText(row, pool.positionCode) }}
+                </span>
               </template>
             </el-table-column>
-            <el-table-column label="发放结果" min-width="180">
-              <template #default="{ row }: { row: DividendMember }">
-                <template v-if="row.payment">
-                  {{ modeLabel(row.payment.mode) }}
-                  {{ decimalFenText(row.payment.actualAmountFen) }}
-                </template>
-                <span v-else>—</span>
+            <el-table-column label="自动发放" width="100" align="center">
+              <template #default="{ row }: { row: MatrixRow }">
+                <el-tag :type="autoTagType(row)" size="small">{{ autoLabelText(row) }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right">
-              <template #default="{ row }: { row: DividendMember }">
+            <el-table-column label="发放结果" min-width="160">
+              <template #default="{ row }: { row: MatrixRow }">
+                <span
+                  :class="
+                    row.removed && !hasPayment(row) && periodOpen ? 'result-manual' : 'result-text'
+                  "
+                >
+                  {{ resultText(row) }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="210" fixed="right">
+              <template #default="{ row }: { row: MatrixRow }">
                 <el-button
                   v-if="periodOpen && !row.removed"
                   link
                   type="warning"
                   :loading="excludingId === row.userId"
-                  @click="exclude(row)"
+                  @click="excludeRow(row)"
                 >
-                  停止自动发放
+                  移出名单
                 </el-button>
                 <el-button
-                  v-else-if="periodOpen && row.removed && !row.payment"
+                  v-if="periodOpen && row.removed && !hasPayment(row)"
                   link
                   type="primary"
-                  @click="openManual(pool.positionCode, pool.positionName, row)"
+                  @click="openManual(row)"
                 >
                   手工发放
+                </el-button>
+                <el-button link type="primary" @click="viewQualification(row.userId)">
+                  查看资格
+                </el-button>
+                <el-button v-if="hasPayment(row)" link type="primary" @click="openRowRecords(row)">
+                  查看流水
                 </el-button>
               </template>
             </el-table-column>
@@ -508,12 +725,24 @@ function poolNote(exclusive: boolean): string {
 
     <el-dialog v-model="manualOpen" title="手工发放" width="480px">
       <p class="ops-hint">
-        {{ manualPositionName }} · 用户 {{ manualUserId }} · 原金额
-        {{
-          decimalFenText(manualOriginal)
-        }}。只对已经停止自动发放的会员，实发金额和备注以本次提交为准。
+        用户 {{ manualUserId }} · 原金额 {{ decimalFenText(manualOriginal) }}。只对已经停止自动发放的会员，实发金额和备注以本次提交为准。
       </p>
       <el-alert v-if="manualError" type="error" :title="manualError" show-icon :closable="false" />
+      <div v-if="manualPoolChoices.length > 1" class="ops-toolbar">
+        <span>职位池</span>
+        <el-select
+          :model-value="manualPositionCode"
+          class="ops-filter"
+          @change="onManualPoolChange"
+        >
+          <el-option
+            v-for="choice in manualPoolChoices"
+            :key="choice.code"
+            :label="choice.name"
+            :value="choice.code"
+          />
+        </el-select>
+      </div>
       <div class="ops-toolbar">
         <el-input v-model="manualYuan" placeholder="实发金额（元）" class="ops-filter" />
       </div>
@@ -530,5 +759,71 @@ function poolNote(exclusive: boolean): string {
         <el-button type="primary" :loading="savingManual" @click="submitManual">确认发放</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="rowRecordsOpen" :title="rowRecordsTitle" width="720px">
+      <div v-loading="rowRecordsLoading">
+        <el-table :data="rowRecords" empty-text="没有发放记录">
+          <el-table-column label="职位" min-width="120">
+            <template #default="{ row }: { row: DividendRecord }">
+              {{ row.positionName || row.positionCode }}
+            </template>
+          </el-table-column>
+          <el-table-column label="方式" width="100">
+            <template #default="{ row }: { row: DividendRecord }">
+              {{ modeLabel(row.mode) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="原金额" min-width="100">
+            <template #default="{ row }: { row: DividendRecord }">
+              {{ decimalFenText(row.originalAmountFen) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="实发" min-width="100">
+            <template #default="{ row }: { row: DividendRecord }">
+              {{ decimalFenText(row.actualAmountFen) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="备注" min-width="140">
+            <template #default="{ row }: { row: DividendRecord }">
+              {{ row.remark || '—' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="时间" min-width="160">
+            <template #default="{ row }: { row: DividendRecord }">
+              {{ formatShanghaiTime(row.paidAt) }}
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-dialog>
   </section>
 </template>
+
+<style scoped>
+.pool-name {
+  display: block;
+  font-weight: 500;
+}
+.pool-sub {
+  display: block;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+.amount-strong {
+  font-weight: 600;
+}
+.amount-ok {
+  color: var(--el-color-success);
+}
+.amount-muted {
+  color: var(--el-text-color-placeholder);
+  text-decoration: line-through;
+}
+.result-manual {
+  color: var(--el-color-warning);
+}
+.result-text {
+  color: var(--el-text-color-secondary);
+}
+</style>
